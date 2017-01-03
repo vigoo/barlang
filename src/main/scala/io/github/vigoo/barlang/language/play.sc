@@ -25,10 +25,12 @@ PrettyPrinter(Expressions.Apply(Expressions.Variable(SymbolName("max")), List(Ex
 
 PrettyPrinter(SingleStatements.VariableDeclaration(SymbolName("x"), Expressions.StringLiteral("something")))
 
-PrettyPrinter(
+val code = PrettyPrinter(
   SingleStatements.If(Expressions.UnaryOp(UnaryOperators.Not, Expressions.BoolLiteral(false)),
     Statements.Sequence(
       SingleStatements.Run(Expressions.StringLiteral("echo"), List(Expressions.StringLiteral("hello"), Expressions.StringLiteral("world"))),
       Statements.Single(SingleStatements.Return(Expressions.IntLiteral(-1)))),
     Statements.NoOp
 ))
+
+Parser.BarlangLexer.parse(Parser.BarlangLexer.tokens, code).get

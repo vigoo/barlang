@@ -1,6 +1,7 @@
 package io.github.vigoo.barlang.language
 
 import scala.annotation.tailrec
+import scala.util.parsing.input.Positional
 
 case class SymbolName(name: String) extends AnyVal
 
@@ -72,7 +73,7 @@ object BinaryOperators {
 }
 
 
-sealed trait Expression
+sealed trait Expression extends Positional
 
 object Expressions {
 
@@ -109,7 +110,7 @@ case class ParamDef(name: SymbolName, typ: Type)
 case class FunctionProperties(inline: Boolean)
 
 
-sealed trait SingleStatement
+sealed trait SingleStatement extends Positional
 
 object SingleStatements {
 
@@ -136,7 +137,7 @@ object SingleStatements {
 }
 
 
-sealed trait Statement
+sealed trait Statement extends Iterable[SingleStatement]
 
 object Statement {
   def normalize(body: Statement): Vector[SingleStatement] = {
@@ -154,15 +155,53 @@ object Statement {
 
     impl(body, Vector())
   }
+
+  def fromSingleStatements(singleStatements: List[SingleStatement]): Statement = {
+    singleStatements match {
+      case Nil => Statements.NoOp
+      case head :: Nil => Statements.Single(head)
+      case head :: tail => Statements.Sequence(head, fromSingleStatements(tail))
+    }
+  }
 }
 
 object Statements {
 
-  case class Single(statement: SingleStatement) extends Statement
+  case class Single(statement: SingleStatement) extends Statement {
+    override def iterator: Iterator[SingleStatement] = new Iterator[SingleStatement] {
+      private var iterated = false
+      override def hasNext: Boolean = !iterated
+      override def next(): SingleStatement = {
+        require(!iterated)
+        iterated = true
+        statement
+      }
+    }
+  }
 
-  case class Sequence(first: SingleStatement, second: Statement) extends Statement
+  case class Sequence(first: SingleStatement, second: Statement) extends Statement {
+    override def iterator: Iterator[SingleStatement] = new Iterator[SingleStatement] {
+      private var iterated = false
+      private val nextIterator = second.iterator
+      override def hasNext: Boolean = !iterated || nextIterator.hasNext
+      override def next(): SingleStatement = {
+        if (!iterated) {
+          iterated = true
+          first
+        } else {
+          nextIterator.next()
+        }
+      }
+    }
+  }
 
-  case object NoOp extends Statement
+  case object NoOp extends Statement {
+    override def iterator: Iterator[SingleStatement] = new Iterator[SingleStatement] {
+      override def hasNext: Boolean = false
+      override def next(): SingleStatement =
+        throw new IllegalStateException()
+    }
+  }
 
 }
 
