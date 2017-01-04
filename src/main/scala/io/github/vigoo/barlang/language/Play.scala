@@ -19,8 +19,19 @@ object Play extends App {
        |return f(1)
        |return f(g(h(0)))
        |return (get("something"))
-       |return (get("something"))(5)
+       |return 10+2*3
+       |return (10+2)*3
+       |return 6*6
+       |return 0/0
+       |return not false
+       |return true or false
+       |return true or false and not true
+       |return f(1) + g(2 mod 3)
+       |return print(true, false, 100 * 100, "and this")
     """.stripMargin)
+  println(s"Tokens:")
+  tokens.get.foreach(println)
+
   val result = Parser.BarlangParser(tokens.get)
   result match {
     case Parser.BarlangParser.Success(ast, next) =>
@@ -30,6 +41,7 @@ object Play extends App {
     case Parser.BarlangParser.NoSuccess(msg, next) =>
       println(s"${next.pos.line}:${next.pos.column} $msg")
   }
+
 
   //  val gradientSrc =
   //    """

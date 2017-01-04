@@ -93,7 +93,7 @@ object Expressions {
 
   case class Predefined(name: SymbolName) extends Expression
 
-  case class Apply(function: Expression, parameters: List[Expression]) extends Expression
+  case class Apply(function: SymbolName, parameters: List[Expression]) extends Expression
 
   case class UnaryOp(operator: UnaryOperator, x: Expression) extends Expression
 
