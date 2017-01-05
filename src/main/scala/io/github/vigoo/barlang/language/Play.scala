@@ -8,7 +8,8 @@ object Play extends App {
                |return "korte"
                |return true
                |return false
-               |return 11
+               |// full line comment
+               |return 11 // end of line comment
                |return -0.5
                |return x
                |return $HOME

@@ -107,7 +107,8 @@ object Parser {
   object BarlangLexer extends RegexParsers {
     override def skipWhitespace: Boolean = true
 
-    override val whiteSpace: Regex = """[ \t\r]+""".r
+    override val whiteSpace: Regex =
+      """(?m)([ \t\r]+)|(\/\/.*$)""".r
 
     private def bool = positioned {
       "bool" ^^ (_ => Tokens.Bool())
@@ -330,13 +331,13 @@ object Parser {
     private def typeExpr: Parser[Type] =
       positioned {
         functionType |
-        arrayType |
-        (Int() ^^ (_ => Types.Int())) |
-        (Bool() ^^ (_ => Types.Bool())) |
-        (Unit() ^^ (_ => Types.Unit())) |
-        (String() ^^ (_ => Types.String())) |
-        (Double() ^^ (_ => Types.Double())) |
-        (identifier ^^ (n => Types.TypeVariable(n)))
+          arrayType |
+          (Int() ^^ (_ => Types.Int())) |
+          (Bool() ^^ (_ => Types.Bool())) |
+          (Unit() ^^ (_ => Types.Unit())) |
+          (String() ^^ (_ => Types.String())) |
+          (Double() ^^ (_ => Types.Double())) |
+          (identifier ^^ (n => Types.TypeVariable(n)))
       }
 
 
@@ -410,7 +411,7 @@ object Parser {
       }
 
     private def paramList: Parser[List[Expression]] =
-      rep1sep(expression, Comma())
+      repsep(expression, Comma())
 
     private def functionApplication: Parser[Expression] =
       positioned {
@@ -430,19 +431,20 @@ object Parser {
     private def term: Parser[Expression] =
       positioned {
         (ParenStart() ~ expression ~ ParenEnd() ^^ { case _ ~ e ~ _ => e }) |
-        lambda |
-        stringLiteral | boolLiteral | intLiteral | doubleLiteral | arrayAccess | functionApplication | variable | systemVariable
+          lambda |
+          stringLiteral | boolLiteral | intLiteral | doubleLiteral | arrayAccess | functionApplication | variable | systemVariable
       }
 
     private def infix(term: Parser[Expression], cases: List[(Token, (Expression, Expression) => Expression)]): Parser[Expression] = {
       for {
         a <- term
-        result <- positioned {
-          cases.foldLeft[Parser[Expression]](failure("no matching operators")) { case (prev, (op, factory)) =>
-            prev | (op ~> term ^^ { b => factory(a, b) })
-          } | success(a)
+        rest <-
+        rep {
+          cases.foldLeft[Parser[(Expression, (Expression, Expression) => Expression)]](failure("no matching operators")) { case (prev, (op, factory)) =>
+            prev | positioned { op ~> term } ^^ { b => (b, factory) }
+          }
         }
-      } yield result
+      } yield rest.foldLeft(a) { case (x, (y, factory)) => factory(x, y) }
     }
 
     private def prefix(nextLevel: Parser[Expression], operator: Token, factory: Expression => Expression): Parser[Expression] =
@@ -482,7 +484,7 @@ object Parser {
     private def variableDecl: Parser[SingleStatement] =
       positioned {
         Val() ~> identifier ~ Equals() ~ expression <~ atLeastOneNewLine ^^ { case name ~ _ ~ expr =>
-            SingleStatements.VariableDeclaration(name, expr)
+          SingleStatements.VariableDeclaration(name, expr)
         }
       }
 
@@ -576,15 +578,15 @@ object Parser {
 
     private def singleStatement: Parser[SingleStatement] =
       variableDecl |
-      arrayDecl |
-      functionDefinition |
-      ret |
-      run |
-      ifThenElse |
-      whileLoop |
-      updateCell |
-      updateVariable |
-      functionCall
+        arrayDecl |
+        functionDefinition |
+        ret |
+        run |
+        ifThenElse |
+        whileLoop |
+        updateCell |
+        updateVariable |
+        functionCall
 
     private def statement: Parser[Statement] =
       rep(singleStatement) ^^ Statement.fromSingleStatements
