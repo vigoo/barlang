@@ -5,22 +5,22 @@ import scala.util.parsing.input.Positional
 
 case class SymbolName(name: String) extends AnyVal
 
-case class TypeParam(name: SymbolName)
+case class TypeParam(name: SymbolName) extends Positional
 
 
-sealed trait Type
+sealed trait Type extends Positional
 
 object Types {
 
-  case object Unit extends Type
+  case class Unit() extends Type
 
-  case object String extends Type
+  case class String() extends Type
 
-  case object Bool extends Type
+  case class Bool() extends Type
 
-  case object Int extends Type
+  case class Int() extends Type
 
-  case object Double extends Type
+  case class Double() extends Type
 
   case class Function(typeParams: List[TypeParam], paramTypes: List[Type], returnType: Type) extends Type
 
@@ -104,7 +104,7 @@ object Expressions {
 }
 
 
-case class ParamDef(name: SymbolName, typ: Type)
+case class ParamDef(name: SymbolName, typ: Type) extends Positional
 
 
 case class FunctionProperties(inline: Boolean)
@@ -118,7 +118,7 @@ object SingleStatements {
 
   case class FunctionDefinition(name: SymbolName, properties: FunctionProperties, typeParams: List[TypeParam], paramDefs: List[ParamDef], returnType: Type, body: Statement) extends SingleStatement
 
-  case class Call(function: Expression, parameters: List[Expression]) extends SingleStatement
+  case class Call(function: SymbolName, parameters: List[Expression]) extends SingleStatement
 
   case class Run(command: Expression, parameters: List[Expression]) extends SingleStatement
 

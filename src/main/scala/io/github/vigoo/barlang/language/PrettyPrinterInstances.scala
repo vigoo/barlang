@@ -41,15 +41,15 @@ object PrettyPrinterInstances {
   implicit val typePrettyPrinter: PrettyPrinter[Type] = new PrettyPrinter[Type] {
     override def prettyPrint(value: Type)(implicit context: PrettyPrinterContext): Unit =
       value match {
-        case Types.Unit =>
+        case Types.Unit() =>
           code("unit")
-        case Types.String =>
+        case Types.String() =>
           code("string")
-        case Types.Bool =>
+        case Types.Bool() =>
           code("bool")
-        case Types.Int =>
+        case Types.Int() =>
           code("int")
-        case Types.Double =>
+        case Types.Double() =>
           code("double")
         case Types.Function(typeParams, paramTypes, returnType) =>
           if (typeParams.nonEmpty) {
@@ -163,7 +163,7 @@ object PrettyPrinterInstances {
           if (properties.inline) {
             code("inline ")
           }
-          code("def "); space; pretty(name)
+          code("def "); pretty(name)
           if (typeParams.nonEmpty) {
             squareBracketed(typeParams)
           }

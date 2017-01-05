@@ -312,6 +312,51 @@ object Parser {
 
     import Tokens._
 
+    private def atLeastOneNewLine: Parser[List[Elem]] =
+      rep(NewLine())
+
+    private def typeList: Parser[List[Type]] =
+      ParenStart() ~> rep1sep(typeExpr, Comma()) <~ ParenEnd()
+
+    private def functionType: Parser[Type] =
+      typeParamList ~ typeList ~ Arrow() ~ typeExpr ^^ {
+        case typeParams ~ params ~ _ ~ returnType =>
+          Types.Function(typeParams, params, returnType)
+      }
+
+    private def arrayType: Parser[Type] =
+      BracketStart() ~> typeExpr <~ BracketEnd() ^^ (t => Types.Array(t))
+
+    private def typeExpr: Parser[Type] =
+      positioned {
+        functionType |
+        arrayType |
+        (Int() ^^ (_ => Types.Int())) |
+        (Bool() ^^ (_ => Types.Bool())) |
+        (Unit() ^^ (_ => Types.Unit())) |
+        (String() ^^ (_ => Types.String())) |
+        (Double() ^^ (_ => Types.Double())) |
+        (identifier ^^ (n => Types.TypeVariable(n)))
+      }
+
+
+    private def paramDef: Parser[ParamDef] = {
+      positioned {
+        identifier ~ Colon() ~ typeExpr ^^ { case name ~ _ ~ typ => ParamDef(name, typ) }
+      }
+    }
+
+    private def paramDefs: Parser[List[ParamDef]] =
+      ParenStart() ~> repsep(paramDef, Comma()) <~ ParenEnd()
+
+    private def typeParam: Parser[TypeParam] =
+      positioned {
+        identifier ^^ (name => TypeParam(name))
+      }
+
+    private def typeParamList: Parser[List[TypeParam]] =
+      (BracketStart() ~> repsep(typeParam, Comma()) <~ BracketEnd()) | success(List.empty)
+
     private def stringLiteral: Parser[Expression] =
       positioned {
         accept("string literal", { case lit@StringLiteral(s) =>
@@ -374,16 +419,29 @@ object Parser {
         }
       }
 
+    private def lambda: Parser[Expression] =
+      positioned {
+        Fn() ~> typeParamList ~ paramDefs ~ Colon() ~ typeExpr ~ atLeastOneNewLine ~ statement ~ End() ^^ {
+          case typeParams ~ params ~ _ ~ returnType ~ _ ~ body ~ _ =>
+            Expressions.Lambda(typeParams, params, returnType, body)
+        }
+      }
+
     private def term: Parser[Expression] =
-      (ParenStart() ~ expression ~ ParenEnd() ^^ { case _ ~ e ~ _ => e }) |
+      positioned {
+        (ParenStart() ~ expression ~ ParenEnd() ^^ { case _ ~ e ~ _ => e }) |
+        lambda |
         stringLiteral | boolLiteral | intLiteral | doubleLiteral | arrayAccess | functionApplication | variable | systemVariable
+      }
 
     private def infix(term: Parser[Expression], cases: List[(Token, (Expression, Expression) => Expression)]): Parser[Expression] = {
       for {
         a <- term
-        result <- cases.foldLeft[Parser[Expression]](failure("no matching operators")) { case (prev, (op, factory)) =>
-          prev | (op ~> term ^^ { b => factory(a, b) })
-        } | success(a)
+        result <- positioned {
+          cases.foldLeft[Parser[Expression]](failure("no matching operators")) { case (prev, (op, factory)) =>
+            prev | (op ~> term ^^ { b => factory(a, b) })
+          } | success(a)
+        }
       } yield result
     }
 
@@ -397,9 +455,9 @@ object Parser {
       infix(exprL4, List(
         Mul() -> (Expressions.BinaryOp(BinaryOperators.Mul, _, _)),
         Div() -> (Expressions.BinaryOp(BinaryOperators.Div, _, _)),
-        Mod() ->  (Expressions.BinaryOp(BinaryOperators.Mod, _, _)),
-        And() ->  (Expressions.BinaryOp(BinaryOperators.And, _, _))
-    ))
+        Mod() -> (Expressions.BinaryOp(BinaryOperators.Mod, _, _)),
+        And() -> (Expressions.BinaryOp(BinaryOperators.And, _, _))
+      ))
 
     private def exprL2: Parser[Expression] =
       infix(exprL3, List(
@@ -421,22 +479,118 @@ object Parser {
     private def expression: Parser[Expression] =
       exprL1
 
-    private def ret =
+    private def variableDecl: Parser[SingleStatement] =
       positioned {
-        Return() ~ expression ~ NewLine() ^^ { case _ ~ expr ~ _ =>
+        Val() ~> identifier ~ Equals() ~ expression <~ atLeastOneNewLine ^^ { case name ~ _ ~ expr =>
+            SingleStatements.VariableDeclaration(name, expr)
+        }
+      }
+
+    private def arrayDecl: Parser[SingleStatement] =
+      positioned {
+        Array() ~> BracketStart() ~> typeExpr ~ BracketEnd() ~ identifier <~ atLeastOneNewLine ^^ {
+          case typ ~ _ ~ name =>
+            SingleStatements.ArrayDeclaration(name, typ)
+        }
+      }
+
+    private def inlineKeyword: Parser[Boolean] =
+      opt(Inline() ^^ (_ => true)).map(_.getOrElse(false))
+
+    private def functionDefinition: Parser[SingleStatement] =
+      positioned {
+        inlineKeyword ~ Def() ~ identifier ~ typeParamList ~ paramDefs ~ Colon() ~ typeExpr ~ atLeastOneNewLine ~ statement <~ End() <~ atLeastOneNewLine ^^ {
+          case isInline ~ _ ~ name ~ typeParameters ~ parameters ~ _ ~ returnType ~ _ ~ body =>
+            SingleStatements.FunctionDefinition(
+              name = name,
+              properties = FunctionProperties(isInline),
+              typeParams = typeParameters,
+              paramDefs = parameters,
+              returnType = returnType,
+              body = body
+            )
+        }
+      }
+
+    private def ret: Parser[SingleStatement] =
+      positioned {
+        Return() ~> expression <~ atLeastOneNewLine ^^ { expr =>
           SingleStatements.Return(expr)
         }
       }
 
-    private def singleStatement: Parser[SingleStatement] =
-      ret
+    private def run: Parser[SingleStatement] =
+      positioned {
+        Greater() ~> expression ~ rep(expression) <~ atLeastOneNewLine ^^ {
+          case command ~ parameters =>
+            SingleStatements.Run(command, parameters)
+        }
+      }
 
+    private def ifThenElse: Parser[SingleStatement] =
+      positioned {
+        (If() ~> expression ~ Then() ~ atLeastOneNewLine ~ statement).flatMap {
+          case condition ~ _ ~ _ ~ trueBody =>
+            Else() ~> atLeastOneNewLine ~> statement <~ End() <~ atLeastOneNewLine ^^ {
+              falseBody =>
+                SingleStatements.If(condition, trueBody, falseBody)
+            } | End() <~ atLeastOneNewLine ^^ { _ =>
+              SingleStatements.If(condition, trueBody, Statements.NoOp)
+            }
+        }
+      }
+
+    private def whileLoop: Parser[SingleStatement] =
+      positioned {
+        While() ~> expression ~ atLeastOneNewLine ~ statement <~ End() <~ atLeastOneNewLine ^^ {
+          case condition ~ _ ~ body =>
+            SingleStatements.While(condition, body)
+        }
+      }
+
+    private def updateCell: Parser[SingleStatement] =
+      positioned {
+        identifier ~ BracketStart() ~ expression ~ BracketEnd() ~ BackArrow() ~ expression <~ atLeastOneNewLine ^^ {
+          case name ~ _ ~ index ~ _ ~ _ ~ value =>
+            SingleStatements.UpdateCell(name, index, value)
+        }
+      }
+
+    private def updateVariable: Parser[SingleStatement] =
+      positioned {
+        identifier ~ BackArrow() ~ expression <~ atLeastOneNewLine ^^ {
+          case name ~ _ ~ value =>
+            SingleStatements.UpdateVariable(name, value)
+        }
+      }
+
+    private def functionCall: Parser[SingleStatement] =
+      positioned {
+        functionApplication <~ atLeastOneNewLine ^^ {
+          case Expressions.Apply(function, parameters) =>
+            SingleStatements.Call(function, parameters)
+          case e =>
+            throw new IllegalStateException(s"Function application parser returned with unexpected expression: $e")
+        }
+      }
+
+    private def singleStatement: Parser[SingleStatement] =
+      variableDecl |
+      arrayDecl |
+      functionDefinition |
+      ret |
+      run |
+      ifThenElse |
+      whileLoop |
+      updateCell |
+      updateVariable |
+      functionCall
 
     private def statement: Parser[Statement] =
-      rep1(singleStatement) ^^ Statement.fromSingleStatements
+      rep(singleStatement) ^^ Statement.fromSingleStatements
 
     def script: Parser[Script] =
-      phrase(statement) ^^ Script
+      phrase(rep(NewLine()) ~> statement) ^^ Script
 
     def apply(tokens: Seq[Token]): ParseResult[Script] = {
       val reader = new BarlangTokenReader(tokens)
