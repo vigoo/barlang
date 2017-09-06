@@ -1,7 +1,7 @@
 package io.github.vigoo.barlang.language
 
-import io.github.vigoo.barlang.prettyprinter.PrettyPrinter
 import io.github.vigoo.barlang.language.PrettyPrinterInstances._
+import io.github.vigoo.prettyprinter.PrettyPrinter
 
 object Play extends App {
   val src = """|return "alma"

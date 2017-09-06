@@ -1,6 +1,6 @@
-package io.github.vigoo.barlang.prettyprinter
+package io.github.vigoo.prettyprinter
 
-import io.github.vigoo.barlang.prettyprinter.PrettyPrinter.PrettyPrinterContext
+import PrettyPrinter.PrettyPrinterContext
 
 trait PrettyPrinter[-T] {
   def prettyPrint(value: T)(implicit context: PrettyPrinterContext): Unit

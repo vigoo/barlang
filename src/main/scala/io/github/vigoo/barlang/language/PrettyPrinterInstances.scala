@@ -4,8 +4,8 @@ import io.github.vigoo.barlang.language.BinaryOperators._
 import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language.SingleStatements._
 import io.github.vigoo.barlang.language.Statements.{NoOp, Sequence, Single}
-import io.github.vigoo.barlang.prettyprinter.PrettyPrinter
-import io.github.vigoo.barlang.prettyprinter.PrettyPrinter.PrettyPrinterContext
+import io.github.vigoo.prettyprinter.PrettyPrinter
+import io.github.vigoo.prettyprinter.PrettyPrinter.PrettyPrinterContext
 
 
 object PrettyPrinterInstances {
