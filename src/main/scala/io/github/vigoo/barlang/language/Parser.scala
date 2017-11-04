@@ -416,7 +416,7 @@ object Parser {
     private def functionApplication: Parser[Expression] =
       positioned {
         identifier ~ ParenStart() ~ paramList ~ ParenEnd() ^^ { case fnName ~ _ ~ params ~ _ =>
-          Expressions.Apply(fnName, params)
+          Expressions.Apply(Expressions.Variable(fnName), params)
         }
       }
 

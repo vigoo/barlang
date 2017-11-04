@@ -93,7 +93,7 @@ object Expressions {
 
   case class Predefined(name: SymbolName) extends Expression
 
-  case class Apply(function: SymbolName, parameters: List[Expression]) extends Expression
+  case class Apply(function: Expression, parameters: List[Expression]) extends Expression
 
   case class UnaryOp(operator: UnaryOperator, x: Expression) extends Expression
 
@@ -118,7 +118,7 @@ object SingleStatements {
 
   case class FunctionDefinition(name: SymbolName, properties: FunctionProperties, typeParams: List[TypeParam], paramDefs: List[ParamDef], returnType: Type, body: Statement) extends SingleStatement
 
-  case class Call(function: SymbolName, parameters: List[Expression]) extends SingleStatement
+  case class Call(function: Expression, parameters: List[Expression]) extends SingleStatement
 
   case class Run(command: Expression, parameters: List[Expression]) extends SingleStatement
 

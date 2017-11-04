@@ -11,7 +11,7 @@ addCompilerPlugin("org.spire-math" %% "kind-projector" % "0.9.4")
 libraryDependencies ++= Seq(
   "org.scala-lang.modules" %% "scala-parser-combinators" % "1.0.6",
   "org.typelevel" %% "cats-core" % "1.0.0-MF",
-  "org.atnos" %% "eff" % "4.5.0"
+  "org.atnos" %% "eff" % "5.0.0+"
 )
 
 scalacOptions += "-Ypartial-unification"

@@ -1,6 +1,7 @@
 package io.github.vigoo.barlang.compiler
 
-import cats.data._
+import cats.instances.list._
+import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language.SingleStatements._
 import org.atnos.eff._
 import org.atnos.eff.all._
@@ -13,55 +14,13 @@ import io.github.vigoo.prettyprinter.PrettyPrinter
 
 import scala.language.higherKinds
 
-object Compiler {
-
-  trait Scope {
-    def functionScope(name: SymbolName): Scope = FunctionScope(name, this)
-    def identifierPrefix: String
-  }
-
-  object GlobalScope extends Scope {
-    override def identifierPrefix: String = ""
-  }
-  case class FunctionScope(name: SymbolName, parent: Scope) extends Scope {
-    override def identifierPrefix: String = s"${parent.identifierPrefix}${name}_"
-  }
-
-  case class AssignedSymbol(name: SymbolName, identifier: String)
-
-  object AssignedSymbol {
-    def inScope(scope: Scope, name: SymbolName): AssignedSymbol = {
-      AssignedSymbol(name, s"${scope.identifierPrefix}${name.name}")
-    }
-  }
-
-
-  sealed trait ExtendedType
-
-  case class SimpleType(typ: Type) extends ExtendedType
-
-  case class FunctionReference(typeParams: List[TypeParam], paramTypes: List[Type], returnType: Type) extends ExtendedType
-
-
-  sealed trait CompilerError
-
-  case class InvalidReturnType(name: SymbolName, returnType: Type, bodyType: ExtendedType) extends CompilerError
-
-  case class UnknownError(reason: Throwable) extends CompilerError
-
-
-  case class Context(scope: Scope, symbols: Map[SymbolName, AssignedSymbol], symbolTypes: Map[SymbolName, ExtendedType], lastTmp: Int)
-
-
-  type CompilerResult[A] = Either[CompilerError, A]
-  type StatementCompiler = Fx.fx2[CompilerResult, State[Context, ?]]
-  type ExpressionCompiler = Fx.fx3[CompilerResult, State[Context, ?], Writer[BashStatement, ?]]
+object Compiler extends CompilerTypes with Predefined {
 
   def compileToString(script: Script): CompilerResult[String] = {
     val initialContext = Context(
       scope = GlobalScope,
       symbols = Map.empty,
-      symbolTypes = Map.empty, // TODO: type of predefined symbols
+      symbolTypes = predefined.map { case (name, predefinedValue) => name -> SimpleType(predefinedValue.typ) },
       lastTmp = 0
     )
     compile(script).runEither.evalState(initialContext).run.map(bashStatement => PrettyPrinter(bashStatement))
@@ -75,13 +34,47 @@ object Compiler {
     } yield compiled
   }
 
-  def replacePredefs(statement: Statement): Statement = {
-    statement // TODO
+  def replacePredefs(statement: SingleStatement): SingleStatement = statement match {
+    case VariableDeclaration(name, value) =>
+      VariableDeclaration(name, replacePredefs(value))
+    case FunctionDefinition(name, properties, typeParams, paramDefs, returnType, body) =>
+      FunctionDefinition(name, properties, typeParams, paramDefs, returnType, replacePredefs(body))
+    case Call(function, parameters) =>
+      Call(function, parameters.map(replacePredefs))
+    case Run(command, parameters) =>
+      Run(replacePredefs(command), parameters.map(replacePredefs))
+    case If(condition, trueBody, falseBody) =>
+      If(replacePredefs(condition), replacePredefs(trueBody), replacePredefs(falseBody))
+    case While(condition, body) =>
+      While(replacePredefs(condition), replacePredefs(body))
+    case UpdateVariable(name, value) =>
+      UpdateVariable(name, replacePredefs(value))
+    case UpdateCell(name, index, value) =>
+      UpdateCell(name, replacePredefs(index), replacePredefs(value))
+    case ArrayDeclaration(name, elementType) =>
+      ArrayDeclaration(name, elementType)
+    case Return(value) =>
+      Return(replacePredefs(value))
   }
 
-  def storeType(name: SymbolName, typ: ExtendedType): Eff[StatementCompiler, Unit] = {
-    modify[StatementCompiler, Context] { context => context.copy(
-      symbolTypes = context.symbolTypes + (name -> typ))
+  def replacePredefs(statement: Statement): Statement = statement match {
+    case Single(singleStatement) =>
+      Single(replacePredefs(singleStatement))
+    case Sequence(first, second) =>
+      Sequence(replacePredefs(first), replacePredefs(second))
+    case NoOp =>
+      NoOp
+  }
+
+  def replacePredefs(expression: Expression): Expression = {
+    expression match {
+      case Variable(name) if predefined.contains(name) => Predefined(name)
+      case ArrayAccess(name, index) => ArrayAccess(name, replacePredefs(index))
+      case Apply(function, parameters) => Apply(function, parameters.map(replacePredefs))
+      case UnaryOp(operator, x) => UnaryOp(operator, replacePredefs(x))
+      case BinaryOp(operator, x, y) => BinaryOp(operator, replacePredefs(x), replacePredefs(y))
+      case Lambda(typeParams, paramDefs, returnType, body) => Lambda(typeParams, paramDefs, returnType, replacePredefs(body))
+      case _ => expression
     }
   }
 
@@ -102,17 +95,119 @@ object Compiler {
     )
   }
 
-  def runChildContext[A](context: Context, f: Eff[StatementCompiler, A]): Eff[StatementCompiler, A] = {
-    f.runEither.evalState(context).run match {
-      case Left(error) =>
-        left[StatementCompiler, CompilerError, A](error)
-      case Right(result) =>
-        right[StatementCompiler, CompilerError, A](result)
+  def unifyTypeVariables(typeParameters: List[TypeParam], actualTypes: List[ExtendedType], typeDefinitions: List[Type]): Eff[StatementCompiler, Map[SymbolName, Type]] = {
+    val typeVariableNames = typeParameters.map(_.name).toSet
+    val pairs = actualTypes.zip(typeDefinitions)
+
+    val mappings = pairs.map {
+      case (SimpleType(actualType), (Types.TypeVariable(name))) if typeVariableNames.contains(name) =>
+        Some(name -> actualType)
+      case _ =>
+        None
+    }
+
+    // TODO: error on ambigous type mappings
+    pure[StatementCompiler, Map[SymbolName, Type]](mappings.flatten.toMap)
+  }
+
+  def appliedType(mapping: Map[SymbolName, Type])(typ: Type): Type = {
+    typ match {
+      case Types.TypeVariable(name) if mapping.contains(name) =>
+        mapping(name)
+      case Types.Function(typeParams, paramTypes, returnType) =>
+        Types.Function(typeParams, paramTypes.map(appliedType(mapping)), appliedType(mapping)(returnType))
+      case _ =>
+        typ
     }
   }
 
-  def typeCheckExpression(value: Expression): Eff[StatementCompiler, ExtendedType] = {
-    ???
+  def appliedExtendedType(mapping: Map[SymbolName, Type])(typ: Type): ExtendedType = {
+    SimpleType(appliedType(mapping)(typ))
+  }
+
+  def typeCheckExpression(expression: Expression): Eff[StatementCompiler, ExtendedType] = {
+    expression match {
+      case StringLiteral(value) =>
+        pure(SimpleType(Types.String()))
+      case BoolLiteral(value) =>
+        pure(SimpleType(Types.Bool()))
+      case IntLiteral(value) =>
+        pure(SimpleType(Types.Int()))
+      case DoubleLiteral(value) =>
+        pure(SimpleType(Types.Double()))
+      case Variable(name) =>
+        for {
+          existingType <- findType(name)
+          result <- existingType match {
+            case Some(t) =>
+              pure[StatementCompiler, ExtendedType](t)
+            case None =>
+              left[StatementCompiler, CompilerError, ExtendedType](CannotInferType(name))
+          }
+        } yield result
+      case ArrayAccess(name, index) =>
+        for {
+          existingType <- findType(name)
+          indexType <- typeCheckExpression(index)
+          result <- existingType match {
+            case Some(SimpleType(Types.Array(elementType))) =>
+              indexType match {
+                case SimpleType(Types.Int()) =>
+                  pure[StatementCompiler, ExtendedType](SimpleType(elementType))
+                case _ =>
+                  left[StatementCompiler, CompilerError, ExtendedType](InvalidArrayIndexType(indexType))
+              }
+            case Some(t) =>
+              left[StatementCompiler, CompilerError, ExtendedType](NonArrayTypeIndexed(t))
+            case none =>
+              left[StatementCompiler, CompilerError, ExtendedType](UndefinedSymbol(name))
+          }
+        } yield result
+
+      case SystemVariable(name) =>
+        pure(SimpleType(Types.String()))
+      case Predefined(name) =>
+        predefined.get(name) match {
+          case Some(predefinedValue) =>
+            pure[StatementCompiler, ExtendedType](SimpleType(predefinedValue.typ))
+          case None =>
+            left[StatementCompiler, CompilerError, ExtendedType](CannotInferType(name))
+        }
+      case Apply(functionReference, parameters) =>
+        for {
+          parameterTypes <- parameters.traverseA(expression => typeCheckExpression(expression))
+          functionReferenceType <- typeCheckExpression(functionReference)
+          result <- functionReferenceType match {
+            case SimpleType(Types.Function(typeParams, expectedParameterTypes, returnType)) =>
+              for {
+                typeVarMapping <- unifyTypeVariables(typeParams, parameterTypes, expectedParameterTypes)
+                result <- if (parameterTypes =:= expectedParameterTypes.map(appliedExtendedType(typeVarMapping))) {
+                  pure[StatementCompiler, ExtendedType](appliedExtendedType(typeVarMapping)(returnType))
+                } else {
+                  left[StatementCompiler, CompilerError, ExtendedType](InvalidParameterTypes(expectedParameterTypes, parameterTypes))
+                }
+              } yield result
+            case FunctionReference(typeParams, expectedParameterTypes, returnType) =>
+              for {
+                typeVarMapping <- unifyTypeVariables(typeParams, parameterTypes, expectedParameterTypes)
+                result <- if (parameterTypes =:= expectedParameterTypes.map(appliedExtendedType(typeVarMapping))) {
+                  pure[StatementCompiler, ExtendedType](appliedExtendedType(typeVarMapping)(returnType))
+                } else {
+                  left[StatementCompiler, CompilerError, ExtendedType](InvalidParameterTypes(expectedParameterTypes, parameterTypes))
+                }
+              } yield result
+            case _ =>
+              left[StatementCompiler, CompilerError, ExtendedType](SymbolNotBoundToFunction(expression))
+          }
+        } yield result
+      case UnaryOp(operator, x) =>
+        ??? // TODO
+      case BinaryOp(operator, x, y) =>
+        ??? // TODO
+      case Lambda(typeParams, paramDefs, returnType, body) =>
+        // TODO: type check body
+        pure(SimpleType(Types.Function(typeParams, paramDefs.map(_.typ), returnType)))
+    }
   }
 
   def typeCheckSingleStatement(statement: SingleStatement): Eff[StatementCompiler, ExtendedType] = {
@@ -130,30 +225,85 @@ object Compiler {
           bodyType <- runChildContext(functionContext, typeCheckStatement(body))
         } yield bodyType).flatMap { bodyType =>
 
-          if (bodyType == SimpleType(returnType)) { // TODO: use typeEq
-            pure(SimpleType(Types.Unit()))
+          if (bodyType =:= SimpleType(returnType)) {
+            pure[StatementCompiler, ExtendedType](SimpleType(Types.Unit()))
           } else {
             left[StatementCompiler, CompilerError, ExtendedType](InvalidReturnType(name, returnType, bodyType))
           }
         }
       case Call(function, parameters) =>
-        ???
+        typeCheckExpression(Expressions.Apply(function, parameters))
       case Run(command, parameters) =>
-        ???
+        for {
+          commandType <- typeCheckExpression(command)
+          paramTypes <- parameters.traverseA(expr => typeCheckExpression(expr))
+          result <- if (commandType =:= SimpleType(Types.String()) && paramTypes.forall(t => t =:= SimpleType(Types.String()))) {
+            pure[StatementCompiler, ExtendedType](SimpleType(Types.Unit()))
+          } else {
+            left[StatementCompiler, CompilerError, ExtendedType](InvalidParametersForRunStatement(commandType, paramTypes))
+          }
+        } yield result
       case If(condition, trueBody, falseBody) =>
-        ???
+        typeCheckExpression(condition).flatMap { conditionType =>
+          if (conditionType =:= SimpleType(Types.Bool())) {
+            for {
+              childContext <- cloneContext()
+              _ <- runChildContext(childContext, typeCheckStatement(trueBody))
+              _ <- runChildContext(childContext, typeCheckStatement(falseBody))
+            } yield SimpleType(Types.Unit())
+          } else {
+            left[StatementCompiler, CompilerError, ExtendedType](InvalidConditionTypeForIf(conditionType))
+          }
+        }
       case While(condition, body) =>
-        ???
+        typeCheckExpression(condition).flatMap { conditionType =>
+          if (conditionType =:= SimpleType(Types.Bool())) {
+            for {
+              childContext <- cloneContext()
+              _ <- runChildContext(childContext, typeCheckStatement(body))
+            } yield SimpleType(Types.Unit())
+          } else {
+            left[StatementCompiler, CompilerError, ExtendedType](InvalidConditionTypeForWhile(conditionType))
+          }
+        }
       case UpdateVariable(name, value) =>
-        ???
+        for {
+          valueType <- typeCheckExpression(value)
+          existingType <- findType(name)
+          result <- existingType match {
+            case Some(t) if t =:= valueType =>
+              pure[StatementCompiler, ExtendedType](SimpleType(Types.Unit()))
+            case Some(t) =>
+              left[StatementCompiler, CompilerError, ExtendedType](VariableUpdateTypeMismatch(valueType, t))
+            case None =>
+              left[StatementCompiler, CompilerError, ExtendedType](UndefinedSymbol(name))
+          }
+        } yield result
       case UpdateCell(name, index, value) =>
-        ???
+        for {
+          indexType <- typeCheckExpression(index)
+          valueType <- typeCheckExpression(value)
+          existingType <- findType(name)
+          result <- existingType match {
+            case Some(SimpleType(Types.Array(elementType))) if valueType =:= SimpleType(elementType) =>
+              indexType match {
+                case SimpleType(Types.Int()) =>
+                  pure[StatementCompiler, ExtendedType](SimpleType(Types.Unit()))
+                case _ =>
+                  left[StatementCompiler, CompilerError, ExtendedType](InvalidArrayIndexType(indexType))
+              }
+            case Some(t) =>
+              left[StatementCompiler, CompilerError, ExtendedType](VariableUpdateTypeMismatch(valueType, t))
+            case none =>
+              left[StatementCompiler, CompilerError, ExtendedType](UndefinedSymbol(name))
+          }
+        } yield result
       case ArrayDeclaration(name, elementType) =>
         for {
           _ <- storeType(name, SimpleType(Types.Array(elementType)))
         } yield SimpleType(Types.Unit())
       case Return(value) =>
-        ???
+        typeCheckExpression(value)
     }
   }
 
@@ -186,7 +336,7 @@ object CompilerPlayground extends App {
   val result = Parser.BarlangParser(tokens.get)
   result match {
     case Parser.BarlangParser.Success(ast, next) =>
-      val result = Compiler.compile(ast)
+      val result = Compiler.compileToString(ast)
       println(result)
     case Parser.BarlangParser.NoSuccess(msg, next) =>
       println(s"${next.pos.line}:${next.pos.column} $msg")

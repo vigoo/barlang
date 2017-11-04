@@ -8,6 +8,9 @@ trait PrettyPrinter[-T] {
   protected final def space(implicit context: PrettyPrinterContext): Unit =
     context.append(' ')
 
+  protected final def dollar(implicit context: PrettyPrinterContext): Unit =
+    context.append('$')
+
   protected final def newline(implicit context: PrettyPrinterContext): Unit =
     context.startNewLine()
 
