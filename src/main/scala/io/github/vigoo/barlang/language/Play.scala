@@ -1,7 +1,6 @@
 package io.github.vigoo.barlang.language
 
-import io.github.vigoo.barlang.language.PrettyPrinterInstances._
-import io.github.vigoo.prettyprinter.PrettyPrinter
+import io.github.vigoo.barlang.language.BarlangPrettyPrint._
 
 object Play extends App {
   val src = """|return "alma"
@@ -86,7 +85,7 @@ object Play extends App {
     case Parser.BarlangParser.Success(ast, next) =>
       println(ast.body.mkString("\n"))
       println("===")
-      println(PrettyPrinter(ast))
+      println(BarlangPrettyPrint.print(ast))
     case Parser.BarlangParser.NoSuccess(msg, next) =>
       println(s"${next.pos.line}:${next.pos.column} $msg")
       println(src.lines.toVector(next.pos.line-1))
@@ -290,7 +289,7 @@ object Play extends App {
     case Parser.BarlangParser.Success(ast, next) =>
       println(ast.body.mkString("\n"))
       println("===")
-      println(PrettyPrinter(ast))
+      println(BarlangPrettyPrint.print(ast))
     case Parser.BarlangParser.NoSuccess(msg, next) =>
       println(s"${next.pos.line}:${next.pos.column} $msg")
       println(gradientSrc.lines.toVector(next.pos.line-1))

@@ -9,8 +9,8 @@ import org.atnos.eff.syntax.all._
 import io.github.vigoo.barlang.language.Statements.{NoOp, Sequence, Single}
 import io.github.vigoo.barlang.language._
 import io.github.vigoo.bash.language.{BashStatement, BashStatements}
-import io.github.vigoo.bash.language.PrettyPrinterInstances._
-import io.github.vigoo.prettyprinter.PrettyPrinter
+import io.github.vigoo.bash.language.BashPrettyPrint._
+import io.github.vigoo.prettyprinter.PrettyPrint
 
 import scala.language.higherKinds
 
@@ -23,7 +23,7 @@ object Compiler extends CompilerTypes with Predefined {
       symbolTypes = predefined.map { case (name, predefinedValue) => name -> SimpleType(predefinedValue.typ) },
       lastTmp = 0
     )
-    compile(script).runEither.evalState(initialContext).run.map(bashStatement => PrettyPrinter(bashStatement))
+    compile(script).runEither.evalState(initialContext).run.map(bashStatement => print(bashStatement))
   }
 
   def compile(script: Script): Eff[StatementCompiler, BashStatement] = {
@@ -106,7 +106,7 @@ object Compiler extends CompilerTypes with Predefined {
         None
     }
 
-    // TODO: error on ambigous type mappings
+    // TODO: error on ambiguous type mappings
     pure[StatementCompiler, Map[SymbolName, Type]](mappings.flatten.toMap)
   }
 
@@ -125,6 +125,46 @@ object Compiler extends CompilerTypes with Predefined {
     SimpleType(appliedType(mapping)(typ))
   }
 
+  def typeCheckBinaryBooleanExpression(a: Expression, b: Expression): Eff[StatementCompiler, ExtendedType] = {
+    for {
+      typA <- typeCheckExpression(a)
+      typB <- typeCheckExpression(b)
+      result <- (typA, typB) match {
+        case (SimpleType(Types.Bool()), SimpleType(Types.Bool())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+        case _ =>
+          left[StatementCompiler, CompilerError, ExtendedType](InvalidBooleanExpression(None))
+
+      }
+    } yield result
+  }
+
+  def typeCheckBinaryNumericExpression(a: Expression, b: Expression, resultType: Option[Type]): Eff[StatementCompiler, ExtendedType] = {
+    for {
+      typA <- typeCheckExpression(a)
+      typB <- typeCheckExpression(b)
+      result <- (typA, typB) match {
+        case (SimpleType(Types.Bool()), SimpleType(Types.Bool())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+        case _ =>
+          left[StatementCompiler, CompilerError, ExtendedType](InvalidBooleanExpression(None))
+
+      }
+    } yield result
+  }
+
+  def typeCheckEqualityExpression(a: Expression, b: Expression): Eff[StatementCompiler, ExtendedType] = {
+    for {
+      typA <- typeCheckExpression(a)
+      typB <- typeCheckExpression(b)
+      result <- if (typA =:= typB) {
+        pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+      } else {
+        left[StatementCompiler, CompilerError, ExtendedType](EqualityUsedOnNonEqualTypes(typA, typB))
+      }
+    } yield result
+  }
+
   def typeCheckExpression(expression: Expression): Eff[StatementCompiler, ExtendedType] = {
     expression match {
       case StringLiteral(value) =>
@@ -137,7 +177,7 @@ object Compiler extends CompilerTypes with Predefined {
         pure(SimpleType(Types.Double()))
       case Variable(name) =>
         for {
-          existingType <- findType(name)
+          existingType <- findType[StatementCompiler](name)
           result <- existingType match {
             case Some(t) =>
               pure[StatementCompiler, ExtendedType](t)
@@ -147,7 +187,7 @@ object Compiler extends CompilerTypes with Predefined {
         } yield result
       case ArrayAccess(name, index) =>
         for {
-          existingType <- findType(name)
+          existingType <- findType[StatementCompiler](name)
           indexType <- typeCheckExpression(index)
           result <- existingType match {
             case Some(SimpleType(Types.Array(elementType))) =>
@@ -200,10 +240,66 @@ object Compiler extends CompilerTypes with Predefined {
               left[StatementCompiler, CompilerError, ExtendedType](SymbolNotBoundToFunction(expression))
           }
         } yield result
-      case UnaryOp(operator, x) =>
-        ??? // TODO
-      case BinaryOp(operator, x, y) =>
-        ??? // TODO
+      case UnaryOp(UnaryOperators.Not, x) =>
+        for {
+          typ <- typeCheckExpression(x)
+          result <- typ match {
+            case SimpleType(Types.Bool()) =>
+              pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+            case _ =>
+              left[StatementCompiler, CompilerError, ExtendedType](InvalidBooleanExpression(Some(x)))
+          }
+        } yield result
+
+      case BinaryOp(BinaryOperators.And, a, b) =>
+        typeCheckBinaryBooleanExpression(a, b)
+      case BinaryOp(BinaryOperators.Or, a, b) =>
+        typeCheckBinaryBooleanExpression(a, b)
+
+      case BinaryOp(BinaryOperators.Add, a, b) =>
+        for {
+          typA <- typeCheckExpression(a)
+          typB <- typeCheckExpression(b)
+          result <- (typA, typB) match {
+            case (SimpleType(Types.String()), SimpleType(Types.String())) =>
+              pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+            case _ =>
+              typeCheckBinaryNumericExpression(a, b, None)
+          }
+        } yield result
+
+      case BinaryOp(BinaryOperators.Sub, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, None)
+      case BinaryOp(BinaryOperators.Mul, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, None)
+      case BinaryOp(BinaryOperators.Div, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, None)
+
+      case BinaryOp(BinaryOperators.Mod, a, b) =>
+        for {
+          typ <- typeCheckBinaryNumericExpression(a, b, None)
+          result <- typ match {
+            case SimpleType(Types.Int()) =>
+              pure[StatementCompiler, ExtendedType](SimpleType(Types.Int()))
+            case _ =>
+              left[StatementCompiler, CompilerError, ExtendedType](InvalidTypesInNumericExpression(typ))
+          }
+        } yield result
+
+      case BinaryOp(BinaryOperators.Less, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, Some(Types.Bool()))
+      case BinaryOp(BinaryOperators.LessEq, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, Some(Types.Bool()))
+      case BinaryOp(BinaryOperators.Greater, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, Some(Types.Bool()))
+      case BinaryOp(BinaryOperators.GreaterEq, a, b) =>
+        typeCheckBinaryNumericExpression(a, b, Some(Types.Bool()))
+
+      case BinaryOp(BinaryOperators.Eq, a, b) =>
+        typeCheckEqualityExpression(a, b)
+      case BinaryOp(BinaryOperators.Neq, a, b) =>
+        typeCheckEqualityExpression(a, b)
+
       case Lambda(typeParams, paramDefs, returnType, body) =>
         // TODO: type check body
         pure(SimpleType(Types.Function(typeParams, paramDefs.map(_.typ), returnType)))
@@ -269,7 +365,7 @@ object Compiler extends CompilerTypes with Predefined {
       case UpdateVariable(name, value) =>
         for {
           valueType <- typeCheckExpression(value)
-          existingType <- findType(name)
+          existingType <- findType[StatementCompiler](name)
           result <- existingType match {
             case Some(t) if t =:= valueType =>
               pure[StatementCompiler, ExtendedType](SimpleType(Types.Unit()))
@@ -283,7 +379,7 @@ object Compiler extends CompilerTypes with Predefined {
         for {
           indexType <- typeCheckExpression(index)
           valueType <- typeCheckExpression(value)
-          existingType <- findType(name)
+          existingType <- findType[StatementCompiler](name)
           result <- existingType match {
             case Some(SimpleType(Types.Array(elementType))) if valueType =:= SimpleType(elementType) =>
               indexType match {

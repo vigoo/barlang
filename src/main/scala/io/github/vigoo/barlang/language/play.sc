@@ -1,6 +1,6 @@
 
 import io.github.vigoo.barlang.language._
-import io.github.vigoo.barlang.language.PrettyPrinterInstances._
+import io.github.vigoo.barlang.language.BarlangPrettyPrint._
 import io.github.vigoo.prettyprinter.PrettyPrinter
 
 PrettyPrinter("something")

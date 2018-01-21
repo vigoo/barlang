@@ -64,6 +64,12 @@ trait CompilerTypes {
 
   case class SymbolNotBoundToFunction(expression: Expression) extends CompilerError
 
+  case class InvalidBooleanExpression(expression: Option[Expression]) extends CompilerError
+
+  case class InvalidTypesInNumericExpression(typ: ExtendedType) extends CompilerError
+
+  case class EqualityUsedOnNonEqualTypes(type1: ExtendedType, type2: ExtendedType) extends CompilerError
+
   case class UnknownError(reason: Throwable) extends CompilerError
 
 
@@ -133,9 +139,14 @@ trait CompilerTypes {
     }
   }
 
-  def findType(name: SymbolName): Eff[StatementCompiler, Option[ExtendedType]] =
+  def findSymbol[R](name: SymbolName)(implicit member: State[Context, ?] |= R): Eff[R, Option[AssignedSymbol]] =
     for {
-      context <- get[StatementCompiler, Context]
+      context <- get[R, Context]
+    } yield context.symbols.get(name)
+
+  def findType[R](name: SymbolName)(implicit member: State[Context, ?] |= R): Eff[R, Option[ExtendedType]] =
+    for {
+      context <- get[R, Context]
     } yield context.symbolTypes.get(name)
 
 
