@@ -66,7 +66,7 @@ trait CompilerTypes {
 
   case class InvalidBooleanExpression(expression: Option[Expression]) extends CompilerError
 
-  case class InvalidTypesInNumericExpression(typ: ExtendedType) extends CompilerError
+  case class InvalidTypesInNumericExpression(types: List[ExtendedType]) extends CompilerError
 
   case class EqualityUsedOnNonEqualTypes(type1: ExtendedType, type2: ExtendedType) extends CompilerError
 

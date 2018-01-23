@@ -56,20 +56,17 @@ trait PrettyPrint[AdditionalFx] {
     }
 
   def append(str: String): Eff[R, Unit] = {
-    val lines = str.lines.toList
+    val lines = Foldable[List].intercalate(
+      str.lines.toList.map(line => List(line)),
+      List("\n"))
 
-    // TODO: do not use sequenceA
-    Eff.sequenceA[R, List, Unit](lines.zipWithIndex.map { case (line, idx) =>
-      for {
-        _ <- indentIfNeeded()
-        _ <- write[R](line)
-        _ <- if (idx > 0 && idx <= (lines.length - 2)) {
-          startNewLine()
-        } else {
-          empty
-        }
-      } yield ()
-    }).map(_ => ())
+    def printLines(lines: List[String]): Eff[R, Unit] =
+      lines match {
+        case Nil => empty
+        case "\n" :: remaining => startNewLine() >> printLines(remaining)
+        case other :: remaining => indentIfNeeded() >> write[R](other) >> printLines(remaining)
+      }
+    printLines(lines)
   }
 
   def startNewLine(): Eff[R, Unit] =

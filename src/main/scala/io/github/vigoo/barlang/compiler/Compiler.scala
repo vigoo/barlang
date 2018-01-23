@@ -16,13 +16,15 @@ import scala.language.higherKinds
 
 object Compiler extends CompilerTypes with Predefined {
 
-  def compileToString(script: Script): CompilerResult[String] = {
-    val initialContext = Context(
+  private def initialContext: Context =
+    Context(
       scope = GlobalScope,
       symbols = Map.empty,
       symbolTypes = predefined.map { case (name, predefinedValue) => name -> SimpleType(predefinedValue.typ) },
       lastTmp = 0
     )
+
+  def compileToString(script: Script): CompilerResult[String] = {
     compile(script).runEither.evalState(initialContext).run.map(bashStatement => print(bashStatement))
   }
 
@@ -33,6 +35,9 @@ object Compiler extends CompilerTypes with Predefined {
       compiled <- compileStatement(replacedBody)
     } yield compiled
   }
+
+  def typeCheck(expression: Expression, context: Context = initialContext): Either[CompilerError, ExtendedType] =
+    typeCheckExpression(replacePredefs(expression)).runEither.evalState(context).run
 
   def replacePredefs(statement: SingleStatement): SingleStatement = statement match {
     case VariableDeclaration(name, value) =>
@@ -144,10 +149,16 @@ object Compiler extends CompilerTypes with Predefined {
       typA <- typeCheckExpression(a)
       typB <- typeCheckExpression(b)
       result <- (typA, typB) match {
-        case (SimpleType(Types.Bool()), SimpleType(Types.Bool())) =>
-          pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+        case (SimpleType(Types.Int()), SimpleType(Types.Int())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(resultType.getOrElse(Types.Int())))
+        case (SimpleType(Types.Double()), SimpleType(Types.Double())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(resultType.getOrElse(Types.Double())))
+        case (SimpleType(Types.Double()), SimpleType(Types.Int())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(resultType.getOrElse(Types.Double())))
+        case (SimpleType(Types.Int()), SimpleType(Types.Double())) =>
+          pure[StatementCompiler, ExtendedType](SimpleType(resultType.getOrElse(Types.Double())))
         case _ =>
-          left[StatementCompiler, CompilerError, ExtendedType](InvalidBooleanExpression(None))
+          left[StatementCompiler, CompilerError, ExtendedType](InvalidTypesInNumericExpression(List(typA, typB)))
 
       }
     } yield result
@@ -262,7 +273,7 @@ object Compiler extends CompilerTypes with Predefined {
           typB <- typeCheckExpression(b)
           result <- (typA, typB) match {
             case (SimpleType(Types.String()), SimpleType(Types.String())) =>
-              pure[StatementCompiler, ExtendedType](SimpleType(Types.Bool()))
+              pure[StatementCompiler, ExtendedType](SimpleType(Types.String()))
             case _ =>
               typeCheckBinaryNumericExpression(a, b, None)
           }
@@ -282,7 +293,7 @@ object Compiler extends CompilerTypes with Predefined {
             case SimpleType(Types.Int()) =>
               pure[StatementCompiler, ExtendedType](SimpleType(Types.Int()))
             case _ =>
-              left[StatementCompiler, CompilerError, ExtendedType](InvalidTypesInNumericExpression(typ))
+              left[StatementCompiler, CompilerError, ExtendedType](InvalidTypesInNumericExpression(List(typ)))
           }
         } yield result
 

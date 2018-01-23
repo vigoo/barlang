@@ -10,20 +10,21 @@ object BasePrettyPrinter extends PrettyPrint[NoFx] {
 
 class PrettyPrinterSpecs extends Specification with PrettyPrinterTests[NoFx, BasePrettyPrinter.type] { def is = s2"""
   With the pretty printer
-    empty prints nothing           $emptyTest
-    space prints space             $spaceTest
-    dollar prints dollar           $dollarTest
-    newline prints \\n             $newlineTest
-    code prints the arg            $codeTest
-    between wraps an inner printer $betweenTest
-    parenthesed wraps in ()        $parenthesedTest
-    squareBracketed wraps in []    $squareBracketedTest
-    curlyBracketed wraps in {}     $curlyBracketedTest
-    doubleQuoted wraps in ""       $doubleQuotedTest
-    flatMap concatenates           $flatMapTest
-    indentation works              $indentedTest
-    sequence without sep works     $seqWithoutSep
-    sequence with sep works        $seqWithSep
+    empty prints nothing            $emptyTest
+    space prints space              $spaceTest
+    dollar prints dollar            $dollarTest
+    newline prints \\n              $newlineTest
+    code prints the arg             $codeTest
+    between wraps an inner printer  $betweenTest
+    parenthesed wraps in ()         $parenthesedTest
+    squareBracketed wraps in []     $squareBracketedTest
+    curlyBracketed wraps in {}      $curlyBracketedTest
+    doubleQuoted wraps in ""        $doubleQuotedTest
+    flatMap concatenates            $flatMapTest
+    indentation works               $indentedTest
+    sequence without sep works      $seqWithoutSep
+    sequence with sep works         $seqWithSep
+    appending strings with newlines $appendMultiLine
   """
 
   override val pp = BasePrettyPrinter
@@ -51,4 +52,6 @@ class PrettyPrinterSpecs extends Specification with PrettyPrinterTests[NoFx, Bas
 
   def seqWithoutSep = sequence(List(code("1"), code("2"), code("3"))) should bePrintedAs("123")
   def seqWithSep = sequence(List(code("1"), code("2"), code("3")), ", ") should bePrintedAs("1, 2, 3")
+
+  def appendMultiLine = indented(append("first line\nsecond line")) >> newline >> code("third line") should bePrinting("    first line\n    second line\nthird line")
 }

@@ -18,3 +18,5 @@ libraryDependencies ++= Seq(
 
 scalacOptions += "-Ypartial-unification"
 
+coverageEnabled in(Test, compile) := true
+coverageEnabled in(Compile, compile) := false
