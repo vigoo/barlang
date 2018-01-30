@@ -4,9 +4,9 @@ import io.github.vigoo.barlang.language.BinaryOperators._
 import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language.SingleStatements._
 import io.github.vigoo.barlang.language.Statements.{NoOp, Sequence, Single}
-import io.github.vigoo.prettyprinter.{PrettyPrint, PrettyPrinter}
+import io.github.vigoo.simpp.{PrettyPrint, PrettyPrinter}
 import cats.implicits._
-import io.github.vigoo.prettyprinter.PrettyPrint.PrettyPrinterContext
+import io.github.vigoo.simpp.PrettyPrint.PrettyPrinterContext
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._

@@ -1,14 +1,12 @@
 package io.github.vigoo.bash.language
 
+import io.github.vigoo.PrettyPrinterTests
 import io.github.vigoo.bash.language.BashConditions._
 import io.github.vigoo.bash.language.BashExpressions._
+import io.github.vigoo.bash.language.BashPrettyPrint._
 import io.github.vigoo.bash.language.BashStatements._
 import io.github.vigoo.bash.language.BashVariables._
-import io.github.vigoo.bash.language.BashPrettyPrint._
-import io.github.vigoo.prettyprinter.PrettyPrinterTests
-import org.atnos.eff.NoFx
 import org.specs2.Specification
-import org.specs2.matcher.Matcher
 
 class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashPrettyPrint.BashFx, BashPrettyPrint.type] { def is = s2"""
     The bash condition pretty printer should

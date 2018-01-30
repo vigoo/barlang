@@ -10,13 +10,13 @@ import io.github.vigoo.barlang.language.Statements.{NoOp, Sequence, Single}
 import io.github.vigoo.barlang.language._
 import io.github.vigoo.bash.language.{BashStatement, BashStatements}
 import io.github.vigoo.bash.language.BashPrettyPrint._
-import io.github.vigoo.prettyprinter.PrettyPrint
+import io.github.vigoo.simpp.PrettyPrint
 
 import scala.language.higherKinds
 
 object Compiler extends CompilerTypes with Predefined {
 
-  private def initialContext: Context =
+  def initialContext: Context =
     Context(
       scope = GlobalScope,
       symbols = Map.empty,
@@ -36,8 +36,11 @@ object Compiler extends CompilerTypes with Predefined {
     } yield compiled
   }
 
-  def typeCheck(expression: Expression, context: Context = initialContext): Either[CompilerError, ExtendedType] =
+  def typeCheck(expression: Expression, context: Context): Either[CompilerError, ExtendedType] =
     typeCheckExpression(replacePredefs(expression)).runEither.evalState(context).run
+
+  def typeCheck(statement: SingleStatement, context: Context): Either[CompilerError, ExtendedType] =
+    typeCheckSingleStatement(replacePredefs(statement)).runEither.evalState(context).run
 
   def replacePredefs(statement: SingleStatement): SingleStatement = statement match {
     case VariableDeclaration(name, value) =>

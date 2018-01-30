@@ -5,9 +5,9 @@ import io.github.vigoo.bash.language.BashConditions.Equals
 import io.github.vigoo.bash.language.BashExpressions._
 import io.github.vigoo.bash.language.BashStatements.{Assign, Command, IfThenElse, Nop}
 import io.github.vigoo.bash.language.BashVariables.Variable
-import io.github.vigoo.prettyprinter.{PrettyPrint, PrettyPrinter}
+import io.github.vigoo.simpp.{PrettyPrint, PrettyPrinter}
 import cats.implicits._
-import io.github.vigoo.prettyprinter.PrettyPrint.PrettyPrinterContext
+import io.github.vigoo.simpp.PrettyPrint.PrettyPrinterContext
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._
@@ -82,7 +82,7 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
       }
     case Eval(statement) => between("$(", ")", statement)
     case Conditional(condition) => between("[[ ", " ]]", condition)
-    case Interpolated(parts) => doubleQuoted(inString(printSequence(parts)))
+    case Interpolated(parts) => doubleQuoted(inString(pretty(sequence(parts))))
   }
 
   implicit val bashConditionPrettyPrinter: PP[BashCondition] = {
