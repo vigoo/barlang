@@ -70,6 +70,12 @@ trait CompilerTypes {
 
   case class EqualityUsedOnNonEqualTypes(type1: ExtendedType, type2: ExtendedType) extends CompilerError
 
+  case class SymbolAlreadyDefined(name: SymbolName) extends CompilerError
+
+  case class InvalidUseOfPredefinedFunction(name: SymbolName) extends CompilerError
+
+  case class UnsupportedExpression(expression: Expression) extends CompilerError
+
   case class UnknownError(reason: Throwable) extends CompilerError
 
 
@@ -114,20 +120,24 @@ trait CompilerTypes {
 
   type CompilerResult[A] = Either[CompilerError, A]
   type StatementCompiler = Fx.fx2[CompilerResult, State[Context, ?]]
-  type ExpressionCompiler = Fx.fx3[CompilerResult, State[Context, ?], Writer[Eff[StatementCompiler, BashStatement], ?]]
+  type PrerequisiteWriter[A] = Writer[Eff[StatementCompiler, BashStatement], A]
+  type ExpressionCompiler= Fx.prepend[PrerequisiteWriter[?], StatementCompiler]
 
+  type _compilerResult[R] = Either[CompilerError, ?] |= R
+  type _compilerState[R] = State[Context, ?] |= R
+  type _prerequisiteWriter[R] = PrerequisiteWriter[?] |= R
 
   case class TypedExpression(typ: ExtendedType, expression: Expression)
 
 
-  def storeType(name: SymbolName, typ: ExtendedType): Eff[StatementCompiler, Unit] = {
-    modify[StatementCompiler, Context] { context => context.copy(
+  def storeType[R : _compilerState](name: SymbolName, typ: ExtendedType): Eff[R, Unit] = {
+    modify[R, Context] { context => context.copy(
       symbolTypes = context.symbolTypes + (name -> typ))
     }
   }
 
-  def cloneContext(): Eff[StatementCompiler, Context] =
-    get[StatementCompiler, Context]
+  def cloneContext[R : _compilerState](): Eff[R, Context] =
+    get[R, Context]
 
 
   def runChildContext[A](context: Context, f: Eff[StatementCompiler, A]): Eff[StatementCompiler, A] = {
@@ -139,18 +149,18 @@ trait CompilerTypes {
     }
   }
 
-  def findSymbol[R](name: SymbolName)(implicit member: State[Context, ?] |= R): Eff[R, Option[AssignedSymbol]] =
+  def findSymbol[R : _compilerState](name: SymbolName): Eff[R, Option[AssignedSymbol]] =
     for {
       context <- get[R, Context]
     } yield context.symbols.get(name)
 
-  def findType[R](name: SymbolName)(implicit member: State[Context, ?] |= R): Eff[R, Option[ExtendedType]] =
+  def findType[R : _compilerState](name: SymbolName): Eff[R, Option[ExtendedType]] =
     for {
       context <- get[R, Context]
     } yield context.symbolTypes.get(name)
 
 
-  def generateTempSymbol[R](implicit member: State[Context, ?] |= R): Eff[R, AssignedSymbol] = {
+  def generateTempSymbol[R : _compilerState]: Eff[R, AssignedSymbol] = {
     for {
       context <- get[R, Context]
       next = context.lastTmp + 1
@@ -161,4 +171,11 @@ trait CompilerTypes {
 
   def prerequisite(statement: Eff[StatementCompiler, BashStatement]): Eff[ExpressionCompiler, Unit] =
     tell[ExpressionCompiler, Eff[StatementCompiler, BashStatement]](statement)
+
+  def createIdentifier[R : _compilerState](name: SymbolName): Eff[R, AssignedSymbol] =
+    for {
+      context <- get[R, Context]
+      assignedSymbol = AssignedSymbol(name, s"${context.scope.identifierPrefix}${name.name}")
+      _ <- put[R, Context](context.copy(symbols = context.symbols + (name -> assignedSymbol)))
+    } yield assignedSymbol
 }

@@ -75,21 +75,20 @@ class ExpressionTypeCheckingSpecs extends Specification { def is = s2"""
 
   Expression type checking reports error on
     array indexing with non-integer                      ${ArrayAccess(SymbolName("stringArray"), StringLiteral("x")) should notTypeCheckWith(exampleContext)}
-    function application of wrong function reference
-    undefined function application
-    function application with wrong number of parameters
-    function application with wrong type of a parameter
-    not operator called on non-boolean
-    and operator called on non-boolean
-    or operator called on non-boolean
+    function application of wrong function reference     ${Apply(Variable(SymbolName("x")), List.empty) should notTypeCheckWith(exampleContext)}
+    undefined function application                       ${Apply(Variable(SymbolName("unknown")), List.empty) should notTypeCheckWith(exampleContext)}
+    function application with wrong number of parameters ${Apply(Variable(SymbolName("max")), List(DoubleLiteral(10.0))) should notTypeCheckWith(exampleContext)}
+    function application with wrong type of a parameter  ${Apply(Variable(SymbolName("max")), List(IntLiteral(1), IntLiteral(2))) should notTypeCheckWith(exampleContext)}
+    not operator called on non-boolean                   ${UnaryOp(Not, Variable(SymbolName("intArray"))) should notTypeCheckWith(exampleContext)}
+    and operator called on non-boolean                   ${BinaryOp(And, DoubleLiteral(1), BoolLiteral(true)) should notTypeCheckWith(exampleContext)}
+    or operator called on non-boolean                    ${BinaryOp(Or, DoubleLiteral(1), BoolLiteral(true)) should notTypeCheckWith(exampleContext)}
   """
-
-  // TODO: test type checking failure cases
 
   val exampleContext: Map[SymbolName, Type] = Map(
     SymbolName("x") -> Types.Int(),
     SymbolName("stringArray") -> Types.Array(Types.String()),
-    SymbolName("intArray") -> Types.Array(Types.Int())
+    SymbolName("intArray") -> Types.Array(Types.Int()),
+    SymbolName("max") -> Types.Function(List.empty, List(Types.Double(), Types.Double()), Types.Double())
   )
 
   def lambdaTypeChecks =

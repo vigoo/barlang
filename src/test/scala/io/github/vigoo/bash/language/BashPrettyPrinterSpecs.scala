@@ -21,6 +21,8 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
     The bash expression pretty printer should
       print literals correctly            $prettyPrintExpressionLiteral
       print read variable correctly       $prettyPrintExpressionReadVariable
+      print read whole array correctly    $prettyPrintExpressionReadArrayWhole
+      print read array correctly          $prettyPrintExpressionReadArray
       print eval correctly                $prettyPrintExpressionEval
       print conditional correctly         $prettyPrintExpressionConditional
       print interpolated string correctly $prettyPrintExpressionInterpolated
@@ -29,6 +31,8 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print assignment correctly          $prettyPrintStatementAssignment
       print command execution correctly   $prettyPrintStatementCommand
       print if-then-else correctly        $prettyPrintStatementIfThenElse
+      print sequence correctly            $prettyPrintStatementSequence
+      print declare correctly             $prettyPrintStatementDeclare
     """
 
   override val pp = BashPrettyPrint
@@ -55,6 +59,15 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   def prettyPrintExpressionReadVariable = {
     (ReadVariable(Variable(BashIdentifier("XYZ"))) should bePrintedAs("${XYZ}")) and
       (ReadVariable(Variable(BashIdentifier("X"))) should bePrintedAs("$X"))
+  }
+
+  def prettyPrintExpressionReadArrayWhole = {
+    ReadArray(Variable(BashIdentifier("LST")), BashArrayIndices.All) should bePrintedAs("${LST[*]}")
+  }
+
+  def prettyPrintExpressionReadArray = {
+    (ReadArray(Variable(BashIdentifier("LST")), BashArrayIndices.Index(Literal("5"))) should bePrintedAs("${LST[5]}")) and
+      (ReadArray(Variable(BashIdentifier("LST")), BashArrayIndices.Index(ReadVariable(Variable(BashIdentifier("IDX"))))) should bePrintedAs("${LST[${IDX}]}"))
   }
 
   def prettyPrintExpressionEval = {
@@ -94,5 +107,25 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
         onFalse = Command(Literal("echo"), List(Interpolated(List(Literal("TEST is not something but "), ReadVariable(Variable(BashIdentifier("TEST"))))))))
 
     statement should bePrintedAs("if [[ ${TEST} == something ]]\nthen\n    echo \"TEST is something\"\nelse\n    echo \"TEST is not something but ${TEST}\"\nfi")
+  }
+
+  def prettyPrintStatementDeclare = {
+    (Declare(Set(BashDeclareOptions.Array), BashIdentifier("LST"), None) should bePrintedAs("declare -a LST")) and
+      (Declare(Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly), BashIdentifier("LST"), None) should bePrintedAs("declare -a -r LST")) and
+      (Declare(Set(BashDeclareOptions.Array), BashIdentifier("LST"), Some(ReadVariable(Variable(BashIdentifier("TMP"))))) should bePrintedAs("declare -a LST=${TMP}"))
+  }
+
+  def prettyPrintStatementSequence = {
+    val statement =
+      Sequence(List(
+        Command(Literal("echo"), List(Literal("Hello world"))),
+        Command(ReadVariable(Variable(BashIdentifier("AWS"))), List(Literal("describe-instance"), Literal("i-test"))),
+        Command(Literal("bc"), List(Literal("-l")), hereString = Some(Literal("5+5")))
+      ))
+
+    statement should bePrintedAs(
+      """echo "Hello world"
+        |${AWS} describe-instance i-test
+        |bc -l <<< 5+5""".stripMargin)
   }
 }

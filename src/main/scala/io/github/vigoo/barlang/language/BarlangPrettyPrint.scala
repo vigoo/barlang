@@ -15,20 +15,20 @@ import org.atnos.eff.syntax.all._
 object BarlangPrettyPrint extends PrettyPrint[NoFx] {
   override def runAdditionalFx(f: Eff[BarlangPrettyPrint.R, Unit]): Eff[PrettyPrinterContext[NoFx], Unit] = f
 
-  type PP[A] = PrettyPrinter[A, NoFx]
+  type PPrinter[T] = PrettyPrinter[T, NoFx]
 
-  implicit val stringPrettyPrinter: PP[String] =
+  implicit val stringPrettyPrinter: PPrinter[String] =
     (value: String) => code(value)
 
-  implicit val symbolNamePrettyPrinter: PP[SymbolName] = (value: SymbolName) => {
+  implicit val symbolNamePrettyPrinter: PPrinter[SymbolName] = (value: SymbolName) => {
     code(value.name)
   }
 
-  implicit val typeParamPrettyPrinter: PP[TypeParam] = (value: TypeParam) => {
+  implicit val typeParamPrettyPrinter: PPrinter[TypeParam] = (value: TypeParam) => {
     pretty(value.name)
   }
 
-  implicit val typePrettyPrinter: PP[Type] = {
+  implicit val typePrettyPrinter: PPrinter[Type] = {
     case Types.Unit() =>
       code("unit")
     case Types.String() =>
@@ -52,11 +52,11 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
       squareBracketed(elementType)
   }
 
-  implicit val paramDefPrettyPrinter: PP[ParamDef] = (value: ParamDef) => {
+  implicit val paramDefPrettyPrinter: PPrinter[ParamDef] = (value: ParamDef) => {
     pretty(value.name) >> code(": ") >> pretty(value.typ)
   }
 
-  implicit val expressionPrettyPrinter: PP[Expression] = {
+  implicit val expressionPrettyPrinter: PPrinter[Expression] = {
     case StringLiteral(text) =>
       between("\"", "\"", escaped(text))
 
@@ -118,7 +118,7 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
         code("end")
   }
 
-  implicit val singleStatementPrettyPrinter: PP[SingleStatement] = (statement: SingleStatement) => statement match {
+  implicit val singleStatementPrettyPrinter: PPrinter[SingleStatement] = (statement: SingleStatement) => statement match {
     case VariableDeclaration(name, value) =>
       code("val ") >> pretty(name) >> code(" = ") >> pretty(value)
 
@@ -185,7 +185,7 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
       code("return") >> space >> pretty(value)
   }
 
-  implicit val statementPrettyPrinter: PP[Statement] = (value: Statement) => value match {
+  implicit val statementPrettyPrinter: PPrinter[Statement] = (value: Statement) => value match {
     case Single(statement) =>
       pretty(statement)
 
@@ -197,7 +197,7 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
       empty
   }
 
-  implicit val scriptPrettyPrinter: PP[Script] = (value: Script) => pretty(value.body)
+  implicit val scriptPrettyPrinter: PPrinter[Script] = (value: Script) => pretty(value.body)
 
   private def escaped(text: String): String =
     text.map {
