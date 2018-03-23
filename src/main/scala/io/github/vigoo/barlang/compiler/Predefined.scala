@@ -56,19 +56,6 @@ trait Predefined {
   }
 
   private def bcFunction(name: String, functionName: String)(expressionCompiler: ExpressionCompilerFunction, params: List[TypedExpression]): Eff[ExpressionCompiler, BashExpression] = {
-    /*
-    bcfun _ fun compileExpression [TypedExpression (SimpleType TDouble) expr] = do
-      tmpSym <- generateTmpSym
-      prereq $ compileExpression expr $
-        \cExpr -> return $ SH.Assign $ SH.Var (asId tmpSym) cExpr
-
-      tmpSym' <- generateTmpSym
-      prereq $ return $ SH.Sequence (SH.Annotated (SH.Lines [(asIdString tmpSym') <> "=$(bc -l <<< \"" <> B.fromString fun <> "($" <> (asIdString tmpSym) <> ")\")"] []) SH.Empty) (noAnnotation SH.Empty)
-      return (SH.ReadVar (SH.VarIdent $ asId tmpSym'))
-
-    bcfun n _ _ ps = throwError $ InvalidParameterTypeForPredefined n (map texpType ps)
-     */
-
     params match {
       case List(TypedExpression(SimpleType(Types.Double()), doubleExpression)) =>
         for {
@@ -86,6 +73,7 @@ trait Predefined {
                 params = List(
                   BashExpressions.Literal("-l")
                 ),
+                // TODO: use the BC pretty printer instead
                 hereString = Some(BashExpressions.Interpolated(
                   List(
                     BashExpressions.Literal(functionName),
@@ -173,4 +161,10 @@ trait Predefined {
     custom(SymbolName("sin"), Types.Function(List.empty, List(Types.Double()), Types.Double()), bcFunction("sin", "s")),
     custom(SymbolName("cos"), Types.Function(List.empty, List(Types.Double()), Types.Double()), bcFunction("cos", "c")),
   )
+
+  def isCustomPredefinedExpression(symbol: SymbolName): Boolean =
+    predefined.get(symbol) match {
+      case Some(PredefinedValue(_, _, CustomExpression(_))) => true
+      case _ => false
+    }
 }

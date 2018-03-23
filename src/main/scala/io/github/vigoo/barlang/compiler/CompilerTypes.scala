@@ -78,6 +78,8 @@ trait CompilerTypes {
 
   case class UnknownError(reason: Throwable) extends CompilerError
 
+  case class IllegalState(reason: String) extends CompilerError
+
 
   trait TypeEq[T] {
     def typeEq(a: T, b: T): Boolean

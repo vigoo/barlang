@@ -26,6 +26,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print eval correctly                $prettyPrintExpressionEval
       print conditional correctly         $prettyPrintExpressionConditional
       print interpolated string correctly $prettyPrintExpressionInterpolated
+      print eval arithmetic correctly     $prettyPrintExpressionEvalArithmetic
 
     The bash statement pretty printer should
       print assignment correctly          $prettyPrintStatementAssignment
@@ -33,6 +34,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print if-then-else correctly        $prettyPrintStatementIfThenElse
       print sequence correctly            $prettyPrintStatementSequence
       print declare correctly             $prettyPrintStatementDeclare
+      print let correctly                 $prettyPrintStatementLet
     """
 
   override val pp = BashPrettyPrint
@@ -88,6 +90,12 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       (Interpolated(List(Literal("something which is a "), ReadVariable(Variable(BashIdentifier("TEST"))))) should bePrintedAs("\"something which is a ${TEST}\""))
   }
 
+  def prettyPrintExpressionEvalArithmetic =
+    EvalArithmetic(
+      BashArithmeticExpressions.Div(
+        BashArithmeticExpressions.Add(BashArithmeticExpressions.Variable(Variable(BashIdentifier("X"))), BashArithmeticExpressions.Number(1)),
+        BashArithmeticExpressions.Number(2))) should bePrintedAs("$(( ($X + 1) / 2 ))")
+
   def prettyPrintStatementAssignment = {
     (Assign(BashIdentifier("X"), Literal("test")) should bePrintedAs("X=test")) and
       (Assign(BashIdentifier("Y"), ReadVariable(Variable(BashIdentifier("X")))) should bePrintedAs("Y=$X"))
@@ -113,6 +121,14 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
     (Declare(Set(BashDeclareOptions.Array), BashIdentifier("LST"), None) should bePrintedAs("declare -a LST")) and
       (Declare(Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly), BashIdentifier("LST"), None) should bePrintedAs("declare -a -r LST")) and
       (Declare(Set(BashDeclareOptions.Array), BashIdentifier("LST"), Some(ReadVariable(Variable(BashIdentifier("TMP"))))) should bePrintedAs("declare -a LST=${TMP}"))
+  }
+
+  def prettyPrintStatementLet = {
+    Let(List(BashArithmeticExpressions.AssignRem(
+      Variable(BashIdentifier("TEST")),
+      BashArithmeticExpressions.Exponentiation(
+        BashArithmeticExpressions.Number(2), BashArithmeticExpressions.Number(3)
+      )))) should bePrintedAs("let \"TEST %= (2 ** 3)\"")
   }
 
   def prettyPrintStatementSequence = {

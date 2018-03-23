@@ -475,8 +475,8 @@ object Compiler extends CompilerTypes with Predefined {
         }
       case Variable(name) =>
         for {
-          findResult <- findSymbol[ExpressionCompiler](name)
-          result <- findResult match {
+          existingSymbol <- findSymbol[ExpressionCompiler](name)
+          result <- existingSymbol match {
             case Some(assignedSym) =>
               r(BcExpressions.BashVariable(BashIdentifier(assignedSym.identifier)))
             case None =>
@@ -506,9 +506,63 @@ object Compiler extends CompilerTypes with Predefined {
     } yield tempSymbol
   }
 
-  def integerExpressionToTempVar(expression: Expression): Eff[ExpressionCompiler, AssignedSymbol] = ???
+  def compileIntegerExpression(expression: Expression): Eff[ExpressionCompiler, BashArithmeticExpression] = {
+    def r = pure[ExpressionCompiler, BashArithmeticExpression] _
 
-  def readTempVar[R : _compilerState : _compilerResult](symbol: AssignedSymbol): Eff[R, BashExpression] = ???
+    def binaryIntegerOp(x: Expression, y: Expression, createOp: (BashArithmeticExpression, BashArithmeticExpression) => BashArithmeticExpression): Eff[ExpressionCompiler, BashArithmeticExpression] = {
+      for {
+        compiledX <- compileIntegerExpression(x)
+        compiledY <- compileIntegerExpression(y)
+      } yield createOp(compiledX, compiledY)
+    }
+
+    expression match {
+      case IntLiteral(value) => r(BashArithmeticExpressions.Number(value))
+      case BinaryOp(BinaryOperators.Add, x, y) => binaryIntegerOp(x, y, BashArithmeticExpressions.Add.apply)
+      case BinaryOp(BinaryOperators.Sub, x, y) => binaryIntegerOp(x, y, BashArithmeticExpressions.Sub.apply)
+      case BinaryOp(BinaryOperators.Mul, x, y) => binaryIntegerOp(x, y, BashArithmeticExpressions.Mul.apply)
+      case BinaryOp(BinaryOperators.Div, x, y) => binaryIntegerOp(x, y, BashArithmeticExpressions.Div.apply)
+      case BinaryOp(BinaryOperators.Mod, x, y) => binaryIntegerOp(x, y, BashArithmeticExpressions.Rem.apply)
+      case Apply(_, _) =>
+        for {
+          compiledExpr <- compile(expression)
+          tempSymbol <- generateTempSymbol[ExpressionCompiler]
+          _ <- prerequisite(pure[StatementCompiler, BashStatement](
+            BashStatements.Assign(
+              BashIdentifier(tempSymbol.identifier),
+              compiledExpr
+            )))
+        } yield BashArithmeticExpressions.Variable(BashVariables.Variable(BashIdentifier(tempSymbol.identifier)))
+      case Variable(name) =>
+        for {
+          existingSymbol <- findSymbol[ExpressionCompiler](name)
+          result <- existingSymbol match {
+            case Some(assignedSym) =>
+              r(BashArithmeticExpressions.Variable(BashVariables.Variable(BashIdentifier(assignedSym.identifier))))
+            case None =>
+              left[ExpressionCompiler, CompilerError, BashArithmeticExpression](UndefinedSymbol(name))
+          }
+        } yield result
+      case _ => left[ExpressionCompiler, CompilerError, BashArithmeticExpression](UnsupportedExpression(expression))
+    }
+  }
+
+  def integerExpressionToTempVar(expression: Expression): Eff[ExpressionCompiler, AssignedSymbol] = {
+    for {
+      arithmeticExpression <- compileIntegerExpression(expression)
+      compiledExpr = BashExpressions.EvalArithmetic(arithmeticExpression)
+      tempSymbol <- generateTempSymbol[ExpressionCompiler]
+      _ <- prerequisite(pure[StatementCompiler, BashStatement](
+        BashStatements.Assign(
+          BashIdentifier(tempSymbol.identifier),
+          compiledExpr
+        )))
+    } yield tempSymbol
+
+  }
+
+  def readTempVar[R : _compilerState : _compilerResult](symbol: AssignedSymbol): Eff[R, BashExpression] =
+    pure[R, BashExpression](BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(symbol.identifier))))
 
   def numericBinaryExpr(op: BinaryOp): Eff[ExpressionCompiler, Option[BashExpression]] = {
     def r = pure[ExpressionCompiler, Option[BashExpression]] _
@@ -601,11 +655,48 @@ object Compiler extends CompilerTypes with Predefined {
           }
         } yield result
 
-      case SystemVariable(name) => ???
-      case Predefined(name) => ???
-      case Apply(function, parameters) => ???
+      case SystemVariable(SymbolName(name)) =>
+        r(BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(name))))
+
+      case Predefined(name) =>
+        predefined.get(name) match {
+          case Some(PredefinedValue(_, _, SimplePredefinedExpression(expr))) =>
+            compile(expr)
+          case Some(PredefinedValue(_, _, CustomExpression(_))) =>
+            left[ExpressionCompiler, CompilerError, BashExpression](InvalidUseOfPredefinedFunction(name))
+          case None =>
+            left[ExpressionCompiler, CompilerError, BashExpression](UndefinedSymbol(name))
+        }
+
+      case Apply(Predefined(symbol), parameters) if isCustomPredefinedExpression(symbol) =>
+        predefined.get(symbol) match {
+          case Some(PredefinedValue(_, _, CustomExpression(fn))) =>
+            for {
+              parameterTypes <- parameters.traverse[Eff[ExpressionCompiler, ?], ExtendedType](
+                param => typeCheckExpression[ExpressionCompiler](param))
+              result <- fn(
+                expression => factory => compileExpression(expression)(factory),
+                parameters.zip(parameterTypes).map { case (param, paramType) => TypedExpression(paramType, param) }
+              )
+            } yield result
+          case _ =>
+            left[ExpressionCompiler, CompilerError, BashExpression](IllegalState(s"isCustomPredefinedExpression failure"))
+        }
+
+      case Apply(functionRefExpression, parameters) =>
+        for {
+          functionReference <- compile(functionRefExpression)
+          compiledParams <- parameters.traverse[Eff[ExpressionCompiler, ?], BashExpression](compile)
+          tempSymbol <- generateTempSymbol[ExpressionCompiler]
+          _ <- prerequisite(pure[StatementCompiler, BashStatement](
+            BashStatements.Sequence(List(
+              BashStatements.Assign(BashIdentifier(tempSymbol.identifier), BashExpressions.Literal("")),
+              BashStatements.Command(functionReference, BashExpressions.Literal(tempSymbol.identifier) :: compiledParams)
+            ))
+          ))
+        } yield BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(tempSymbol.identifier)))
+
       case UnaryOp(operator, x) => ???
-      case BinaryOp(operator, x, y) => ???
       case Lambda(typeParams, paramDefs, returnType, body) => ???
 
       case other: Expression =>
@@ -619,12 +710,12 @@ object Compiler extends CompilerTypes with Predefined {
     }
   }
 
-  def compileExpression(expression: Expression)(factory: BashExpression => BashStatement): Eff[StatementCompiler, BashStatement] =
+  def compileExpression(expression: Expression)(factory: BashExpression => Eff[StatementCompiler, BashStatement]): Eff[StatementCompiler, BashStatement] =
     for {
       result <- compile(expression).runWriter[Eff[StatementCompiler, BashStatement]]
       (compiledExpression, compilePrereqs) = result
       prereqs <- compilePrereqs.sequenceA
-      resultStatement = factory(compiledExpression)
+      resultStatement <- factory(compiledExpression)
     } yield BashStatements.Sequence(prereqs ::: List(resultStatement)).normalize
 
   def compileSingleStatement(singleStatement: SingleStatement): Eff[StatementCompiler, BashStatement] = {
@@ -639,7 +730,7 @@ object Compiler extends CompilerTypes with Predefined {
               for {
                 assignedSymbol <- createIdentifier[StatementCompiler](name)
                 result <- compileExpression(expression) { compiledExpression =>
-                  BashStatements.Assign(BashIdentifier(assignedSymbol.identifier), compiledExpression)
+                  pure[StatementCompiler, BashStatement](BashStatements.Assign(BashIdentifier(assignedSymbol.identifier), compiledExpression))
                 }
               } yield result
           }
