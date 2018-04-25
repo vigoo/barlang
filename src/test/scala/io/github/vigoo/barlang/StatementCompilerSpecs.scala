@@ -27,6 +27,8 @@ class StatementCompilerSpecs extends Specification {
     variable declaration from an integer expression  $variableDeclIntegerExpr
     variable declaration from a function call        $variableDeclFunCall
     variable declaration from a predefined funcall   $variableDeclPredefinedFunCall
+    variable declaration from a string expression    $variableDeclStringExpr
+    variable declaration from a boolean expression   $variableDeclBoolExpr
   """
 
   val exampleContext: Map[SymbolName, Type] = Map(
@@ -162,6 +164,48 @@ class StatementCompilerSpecs extends Specification {
           )))),
         BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp2"))))
       ))
+    )
+
+  def variableDeclStringExpr =
+    VariableDeclaration(SymbolName("test"),
+      BinaryOp(BinaryOperators.Add,
+        StringLiteral("TEST"),
+        ArrayAccess(SymbolName("strLst"), IntLiteral(2)))) must compileTo(
+
+      BashStatements.Sequence(List(
+        BashStatements.Declare(Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly), BashIdentifier("__tmp1"),
+          Some(BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("strLst")), BashArrayIndices.All))),
+        BashStatements.Assign(BashIdentifier("test"), BashExpressions.Interpolated(List(
+          BashExpressions.Literal("TEST"),
+          BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("__tmp1")), BashArrayIndices.Index(BashExpressions.Literal("2"))))))))
+    )
+
+  def variableDeclBoolExpr =
+    VariableDeclaration(SymbolName("test"),
+      BinaryOp(BinaryOperators.Or,
+        BinaryOp(BinaryOperators.Less,
+          Variable(SymbolName("x")),
+          IntLiteral(10)),
+        BinaryOp(BinaryOperators.Neq,
+          Apply(Variable(SymbolName("f")), List(Variable(SymbolName("x")), StringLiteral("abc"))),
+          StringLiteral("hello")
+        )
+      )) must compileTo(
+
+      BashStatements.Sequence(List(
+        BashStatements.Assign(BashIdentifier("__tmp1"),
+          BashExpressions.Literal("")),
+        BashStatements.Command(BashExpressions.Literal("f"),List(
+          BashExpressions.Literal("__tmp1"),
+          BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("x"))),
+          BashExpressions.Literal("abc")),None),
+        BashStatements.Assign(BashIdentifier("__tmp2"),
+          BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1")))),
+        BashStatements.Assign(BashIdentifier("__tmp3"),
+          BashExpressions.Or(
+            BashExpressions.Conditional(BashConditions.Less(BashConditions.Variable(BashVariables.Variable(BashIdentifier("x"))),BashConditions.Literal("10"))),
+            BashExpressions.Conditional(BashConditions.NotEquals(BashConditions.Variable(BashVariables.Variable(BashIdentifier("__tmp2"))),BashConditions.Literal("hello"))))),
+        BashStatements.Assign(BashIdentifier("test"),BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp3"))))))
     )
 
   def compileTo(bashStatement: BashStatement): Matcher[SingleStatement] =

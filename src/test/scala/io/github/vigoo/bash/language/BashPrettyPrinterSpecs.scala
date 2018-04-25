@@ -1,7 +1,6 @@
 package io.github.vigoo.bash.language
 
 import io.github.vigoo.PrettyPrinterTests
-import io.github.vigoo.bash.language.BashConditions._
 import io.github.vigoo.bash.language.BashExpressions._
 import io.github.vigoo.bash.language.BashPrettyPrint._
 import io.github.vigoo.bash.language.BashStatements._
@@ -10,7 +9,10 @@ import org.specs2.Specification
 
 class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashPrettyPrint.BashFx, BashPrettyPrint.type] { def is = s2"""
     The bash condition pretty printer should
-      print equality correctly       $prettyPrintConditionEq
+      print equality correctly            $prettyPrintConditionEq
+      print negation correctly            $prettyPrintConditionNot
+      print TRUE literal correctly        $prettyPrintConditionLiteralTrue
+      print empty literal correctly       $prettyPrintConditionLiteralFalse
 
     The bash variable pretty printer should
       print simple variables correctly    $prettyPrintVariable
@@ -40,8 +42,20 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   override val pp = BashPrettyPrint
 
   def prettyPrintConditionEq = {
-    (Equals(ReadVariable(Variable(BashIdentifier("TEST"))), Literal("something")) should bePrintedAs("""${TEST} == something""")) and
-      (Equals(ReadVariable(Variable(BashIdentifier("TEST"))), Literal("something longer")) should bePrintedAs("""${TEST} == "something longer""""))
+    (BashConditions.StringEquals(BashConditions.Variable(Variable(BashIdentifier("TEST"))), BashConditions.Literal("something")) should bePrintedAs("""${TEST} == something""")) and
+      (BashConditions.StringEquals(BashConditions.Variable(Variable(BashIdentifier("TEST"))), BashConditions.Literal("something longer")) should bePrintedAs("""${TEST} == "something longer""""))
+  }
+
+  def prettyPrintConditionNot = {
+    BashConditions.Not(BashConditions.RegularFileExists(BashConditions.Variable(Variable(BashIdentifier("FILENAME"))))) should bePrintedAs("""! -f ${FILENAME}""")
+  }
+
+  def prettyPrintConditionLiteralTrue = {
+    BashConditions.Literal("TRUE") should bePrintedAs("TRUE")
+  }
+
+  def prettyPrintConditionLiteralFalse = {
+    BashConditions.Literal("") should bePrintedAs("\"\"")
   }
 
   def prettyPrintVariable = {
@@ -78,7 +92,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   }
 
   def prettyPrintExpressionConditional = {
-    Conditional(Equals(ReadVariable(Variable(BashIdentifier("TEST"))), Literal("something"))) should bePrintedAs("[[ ${TEST} == something ]]")
+    Conditional(BashConditions.StringEquals(BashConditions.Variable(Variable(BashIdentifier("TEST"))), BashConditions.Literal("something"))) should bePrintedAs("[[ ${TEST} == something ]]")
   }
 
   def prettyPrintExpressionInterpolated = {
@@ -110,7 +124,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   def prettyPrintStatementIfThenElse = {
     val statement =
       IfThenElse(
-        conditional = Conditional(Equals(ReadVariable(Variable(BashIdentifier("TEST"))), Literal("something"))),
+        conditional = Conditional(BashConditions.StringEquals(BashConditions.Variable(Variable(BashIdentifier("TEST"))), BashConditions.Literal("something"))),
         onTrue = Command(Literal("echo"), List(Literal("TEST is something"))),
         onFalse = Command(Literal("echo"), List(Interpolated(List(Literal("TEST is not something but "), ReadVariable(Variable(BashIdentifier("TEST"))))))))
 

@@ -102,9 +102,9 @@ trait Predefined {
         case SimpleType(Types.Bool()) =>
           for {
             temporarySymbol <- generateTempSymbol[ExpressionCompiler]
-            conditionExpression = BashExpressions.Conditional(BashConditions.Equals(
-              BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(assignedSymbol.identifier))),
-              BashExpressions.Literal("0")))
+            conditionExpression = BashExpressions.Conditional(BashConditions.StringEquals(
+              BashConditions.Variable(BashVariables.Variable(BashIdentifier(assignedSymbol.identifier))),
+              BashConditions.Literal("0")))
             onTrue = BashStatements.Assign(
               BashIdentifier(temporarySymbol.identifier),
               BashExpressions.Literal("true")

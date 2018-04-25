@@ -38,6 +38,10 @@ object BashExpressions {
   case class Conditional(condition: BashCondition) extends BashExpression
   case class Interpolated(parts: List[BashExpression]) extends BashExpression
   case class EvalArithmetic(expression: BashArithmeticExpression) extends BashExpression
+  case object True extends BashExpression
+  case object False extends BashExpression
+  case class And(a: BashExpression, b: BashExpression) extends BashExpression
+  case class Or(a: BashExpression, b: BashExpression) extends BashExpression
 }
 
 
@@ -46,10 +50,84 @@ object BashVariables {
   case class Variable(name: BashIdentifier) extends BashVariable
 }
 
+sealed trait BashOption
+object BashOptions {
+  case object AllExport extends BashOption
+  case object BraceExpand extends BashOption
+  case object Emacs extends BashOption
+  case object ErrExit extends BashOption
+  case object ErrTrace extends BashOption
+  case object FuncTrace extends BashOption
+  case object HashAll extends BashOption
+  case object HistExpand extends BashOption
+  case object History extends BashOption
+  case object IgnoreEof extends BashOption
+  case object Keyword extends BashOption
+  case object Monitor extends BashOption
+  case object NoClobber extends BashOption
+  case object NoExec extends BashOption
+  case object NoGlob extends BashOption
+  case object NoLog extends BashOption
+  case object Notify extends BashOption
+  case object NoUnset extends BashOption
+  case object OneCmd extends BashOption
+  case object Physical extends BashOption
+  case object PipeFail extends BashOption
+  case object Posix extends BashOption
+  case object Privileged extends BashOption
+  case object Verbose extends BashOption
+  case object Vi extends BashOption
+  case object Xtrace extends BashOption
+}
 
 sealed trait BashCondition
 object BashConditions {
-  case class Equals(a: BashExpression, b: BashExpression) extends BashCondition
+  case class Literal(value: String) extends BashCondition
+  case class Variable(variable: BashVariable) extends BashCondition
+
+  case class StringEquals(a: BashCondition, b: BashCondition) extends BashCondition
+  case class StringNotEquals(a: BashCondition, b: BashCondition) extends BashCondition
+  case class LexicographicLess(a: BashCondition, b: BashCondition) extends BashCondition
+  case class LexicographicGreater(a: BashCondition, b: BashCondition) extends BashCondition
+  case class Equals(a: BashCondition, b: BashCondition) extends BashCondition
+  case class NotEquals(a: BashCondition, b: BashCondition) extends BashCondition
+  case class Greater(a: BashCondition, b: BashCondition) extends BashCondition
+  case class GreaterEq(a: BashCondition, b: BashCondition) extends BashCondition
+  case class Less(a: BashCondition, b: BashCondition) extends BashCondition
+  case class LessEq(a: BashCondition, b: BashCondition) extends BashCondition
+
+  case class Not(a: BashCondition) extends BashCondition
+  case class And(a: BashCondition, b: BashCondition) extends BashCondition
+  case class Or(a: BashCondition, b: BashCondition) extends BashCondition
+
+  case class FileExists(a: BashCondition) extends BashCondition
+  case class BlockFileExists(a: BashCondition) extends BashCondition
+  case class CharacterFileExists(a: BashCondition) extends BashCondition
+  case class DirectoryExists(a: BashCondition) extends BashCondition
+  case class RegularFileExists(a: BashCondition) extends BashCondition
+  case class FileExistsWithSetGroupId(a: BashCondition) extends BashCondition
+  case class SymbolicLinkExists(a: BashCondition) extends BashCondition
+  case class FileExistsWithStickyBit(a: BashCondition) extends BashCondition
+  case class NamedPipeExists(a: BashCondition) extends BashCondition
+  case class ReadableFileExists(a: BashCondition) extends BashCondition
+  case class NonEmptyFileExists(a: BashCondition) extends BashCondition
+  case class IsOpenTerminalFileDescriptor(a: BashCondition) extends BashCondition
+  case class FileExistsWithSetUserId(a: BashCondition) extends BashCondition
+  case class WriteableFileExists(a: BashCondition) extends BashCondition
+  case class ExecutableFileExists(a: BashCondition) extends BashCondition
+  case class FileExistsOwnedByEffectiveGroupId(a: BashCondition) extends BashCondition
+  case class FileExistsModifiedSinceRead(a: BashCondition) extends BashCondition
+  case class SocketExists(a: BashCondition) extends BashCondition
+
+  case class SameDeviceAndInode(a: BashCondition, b: BashCondition) extends BashCondition
+  case class NewerThan(a: BashCondition, b: BashCondition) extends BashCondition
+  case class OlderThan(a: BashCondition, b: BashCondition) extends BashCondition
+  case class OptionEnabled(option: BashOption) extends BashCondition
+  case class VariableSet(variable: BashVariable) extends BashCondition
+  case class NameReferenceSet(variable: BashVariable) extends BashCondition
+
+  case class ZeroLengthString(a: BashCondition) extends BashCondition
+  case class NonZeroLengthString(a: BashCondition) extends BashCondition
 }
 
 sealed trait BashArrayIndex

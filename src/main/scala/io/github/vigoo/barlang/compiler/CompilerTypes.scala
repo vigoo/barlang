@@ -76,6 +76,10 @@ trait CompilerTypes {
 
   case class UnsupportedExpression(expression: Expression) extends CompilerError
 
+  case class UnsupportedConditionalExpression(expression: Expression) extends CompilerError
+
+  case class UnsupportedTypeInBooleanExpression(name: SymbolName, typ: ExtendedType) extends CompilerError
+
   case class UnknownError(reason: Throwable) extends CompilerError
 
   case class IllegalState(reason: String) extends CompilerError

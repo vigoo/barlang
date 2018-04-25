@@ -601,6 +601,173 @@ object Compiler extends CompilerTypes with Predefined {
     }
   }
 
+  def binaryCondition(x: Expression, y: Expression, factory: (BashCondition, BashCondition) => BashCondition): Eff[ExpressionCompiler, BashCondition] =
+    for {
+      compiledX <- compileCondition(x)
+      compiledY <- compileCondition(y)
+    } yield factory(compiledX, compiledY)
+
+  def compileCondition(expression: Expression): Eff[ExpressionCompiler, BashCondition] = {
+    def r = pure[ExpressionCompiler, BashCondition] _
+
+    expression match {
+      case BoolLiteral(true) => r(BashConditions.Literal("TRUE"))
+      case BoolLiteral(false) => r(BashConditions.Literal(""))
+      case StringLiteral(value) => r(BashConditions.Literal(value))
+      case IntLiteral(value) => r(BashConditions.Literal(value.toString))
+      case DoubleLiteral(value) => r(BashConditions.Literal(value.toString))
+      case Variable(name) =>
+        for {
+          existingSymbol <- findSymbol[ExpressionCompiler](name)
+          existingType <- findType[ExpressionCompiler](name)
+          result <- (existingSymbol, existingType) match {
+            case (Some(symbol), Some(SimpleType(Types.Bool()))) =>
+              r(BashConditions.StringEquals(
+                BashConditions.Variable(BashVariables.Variable(BashIdentifier(symbol.identifier))),
+                BashConditions.Literal("0")))
+            case (Some(symbol), Some(SimpleType(Types.Int()))) =>
+              r(BashConditions.Variable(BashVariables.Variable(BashIdentifier(symbol.identifier))))
+            case (Some(symbol), Some(SimpleType(Types.Double()))) =>
+              r(BashConditions.Variable(BashVariables.Variable(BashIdentifier(symbol.identifier))))
+            case (Some(symbol), Some(SimpleType(Types.String()))) =>
+              r(BashConditions.Variable(BashVariables.Variable(BashIdentifier(symbol.identifier))))
+            case (Some(_), Some(typ)) =>
+              left[ExpressionCompiler, CompilerError, BashCondition](UnsupportedTypeInBooleanExpression(name, typ))
+            case _ =>
+              left[ExpressionCompiler, CompilerError, BashCondition](UndefinedSymbol(name))
+          }
+        } yield result
+      case UnaryOp(UnaryOperators.Not, x) =>
+        for {
+          compiledX <- compileCondition(x)
+        } yield BashConditions.Not(compiledX)
+      case BinaryOp(BinaryOperators.Eq, x, y) =>
+        // TODO: check types and choose StringEquals if necessary
+        binaryCondition(x, y, BashConditions.Equals)
+      case BinaryOp(BinaryOperators.Neq, x, y) =>
+        // TODO: check types and choose StringEquals if necessary
+        binaryCondition(x, y, BashConditions.NotEquals)
+      case BinaryOp(BinaryOperators.Less, x, y) =>
+        binaryCondition(x, y, BashConditions.Less)
+      case BinaryOp(BinaryOperators.LessEq, x, y) =>
+        binaryCondition(x, y, BashConditions.LessEq)
+      case BinaryOp(BinaryOperators.Greater, x, y) =>
+        binaryCondition(x, y, BashConditions.Greater)
+      case BinaryOp(BinaryOperators.GreaterEq, x, y) =>
+        binaryCondition(x, y, BashConditions.GreaterEq)
+      case BinaryOp(BinaryOperators.And, x, y) =>
+        binaryCondition(x, y, BashConditions.And)
+      case BinaryOp(BinaryOperators.Or, x, y) =>
+        binaryCondition(x, y, BashConditions.Or)
+      case _ =>
+        for {
+          compiledExpr <- compile(expression)
+          tempSymbol <- generateTempSymbol[ExpressionCompiler]
+          _ <- prerequisite(pure[StatementCompiler, BashStatement](
+            BashStatements.Assign(
+              BashIdentifier(tempSymbol.identifier),
+              compiledExpr
+            )))
+        } yield BashConditions.Variable(BashVariables.Variable(BashIdentifier(tempSymbol.identifier)))
+    }
+  }
+
+  def compileBooleanExpression(expression: Expression): Eff[ExpressionCompiler, BashExpression] = {
+    def r = pure[ExpressionCompiler, BashExpression] _
+
+    expression match {
+      case BoolLiteral(true) =>
+        r(BashExpressions.True)
+      case BoolLiteral(false) =>
+        r(BashExpressions.False)
+      case Variable(name) =>
+        for {
+          existingSymbol <- findSymbol[ExpressionCompiler](name)
+          result <- existingSymbol match {
+            case Some(symbol) =>
+              r(BashExpressions.Eval(BashStatements.Command(
+                BashExpressions.Literal("exit"),
+                List(
+                  BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(symbol.identifier)))
+                )
+              )))
+            case None =>
+              left[ExpressionCompiler, CompilerError, BashExpression](UndefinedSymbol(name))
+          }
+        } yield result
+      case BinaryOp(BinaryOperators.And, x, y) =>
+        for {
+          compiledX <- compileBooleanExpression(x)
+          compiledY <- compileBooleanExpression(y)
+        } yield BashExpressions.And(compiledX, compiledY)
+      case BinaryOp(BinaryOperators.Or, x, y) =>
+        for {
+          compiledX <- compileBooleanExpression(x)
+          compiledY <- compileBooleanExpression(y)
+        } yield BashExpressions.Or(compiledX, compiledY)
+
+      case _ =>
+        for {
+          condition <- compileCondition(expression)
+        } yield BashExpressions.Conditional(condition)
+    }
+  }
+
+  def booleanExpressionToTempVar(expression: Expression): Eff[ExpressionCompiler, AssignedSymbol] = {
+    for {
+      compiledExpr <- compileBooleanExpression(expression)
+      tempSymbol <- generateTempSymbol[ExpressionCompiler]
+      _ <- prerequisite(pure[StatementCompiler, BashStatement](
+        BashStatements.Assign(
+          BashIdentifier(tempSymbol.identifier),
+          compiledExpr
+        )))
+    } yield tempSymbol
+
+  }
+
+  def compileBooleanSubExpression(expression: Expression): Eff[ExpressionCompiler, Option[BashExpression]] = {
+    def r = pure[ExpressionCompiler, Option[BashExpression]] _
+
+    expression match {
+      case op@UnaryOp(UnaryOperators.Not, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.And, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.Or, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.Eq, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.Neq, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.Less, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.LessEq, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.Greater, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case op@BinaryOp(BinaryOperators.GreaterEq, _, _) => booleanExpressionToTempVar(op).flatMap(readTempVar[ExpressionCompiler]).map(Some.apply)
+      case _ => r(None)
+    }
+  }
+
+  def compileStringSubExpression(expression: Expression): Eff[ExpressionCompiler, Option[BashExpression]] = {
+    val noResult = pure[ExpressionCompiler, Option[BashExpression]](None)
+
+    expression match {
+      case BinaryOp(BinaryOperators.Add, x, y) =>
+        for {
+          typeX <- typeCheckExpression[ExpressionCompiler](x)
+          typeY <- typeCheckExpression[ExpressionCompiler](y)
+
+          result <- (typeX, typeY) match {
+            case (SimpleType(Types.String()), SimpleType(Types.String())) =>
+              for {
+                compiledX <- compile(x)
+                compiledY <- compile(y)
+              } yield Some(BashExpressions.Interpolated(List(compiledX, compiledY)))
+            case _ =>
+              noResult
+          }
+        } yield result
+
+      case _ =>
+        noResult
+    }
+  }
+
   def compile(expression: Expression): Eff[ExpressionCompiler, BashExpression] = {
     def r(bashExpr: BashExpression): Eff[ExpressionCompiler, BashExpression] =
       pure[ExpressionCompiler, BashExpression](bashExpr)
@@ -696,13 +863,17 @@ object Compiler extends CompilerTypes with Predefined {
           ))
         } yield BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(tempSymbol.identifier)))
 
-      case UnaryOp(operator, x) => ???
-      case Lambda(typeParams, paramDefs, returnType, body) => ???
+      case Lambda(typeParams, paramDefs, returnType, body) =>
+        // TODO
+        ???
 
       case other: Expression =>
         for {
+          stringResult <- compileStringSubExpression(other)
           numericResult <- compileNumericSubExpression(other)
-          result <- numericResult match {
+          boolResult <- compileBooleanSubExpression(other)
+
+          result <- stringResult.orElse(boolResult).orElse(numericResult) match {
             case Some(value) => r(value)
             case None => left[ExpressionCompiler, CompilerError, BashExpression](UnsupportedExpression(other))
           }
@@ -759,23 +930,5 @@ object Compiler extends CompilerTypes with Predefined {
       case NoOp =>
         pure(BashStatements.Nop)
     }
-  }
-}
-
-object CompilerPlayground extends App {
-
-  val src =
-    """val x = 5
-      |
-    """.stripMargin
-  val tokens = Parser.BarlangLexer.parse(Parser.BarlangLexer.tokens, src)
-  val result = Parser.BarlangParser(tokens.get)
-  result match {
-    case Parser.BarlangParser.Success(ast, next) =>
-      val result = Compiler.compileToString(ast)
-      println(result)
-    case Parser.BarlangParser.NoSuccess(msg, next) =>
-      println(s"${next.pos.line}:${next.pos.column} $msg")
-      println(src.lines.toVector(next.pos.line - 1))
   }
 }
