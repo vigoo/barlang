@@ -3,6 +3,8 @@ package io.github.vigoo.barlang.compiler
 import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language._
 import io.github.vigoo.bash.language._
+import io.github.vigoo.bc.language.{BcExpressions, BcPrettyPrint}
+import io.github.vigoo.bc.language.BcPrettyPrint._
 import org.atnos.eff._
 import org.atnos.eff.all._
 import org.atnos.eff.syntax.all._
@@ -73,15 +75,10 @@ trait Predefined {
                 params = List(
                   BashExpressions.Literal("-l")
                 ),
-                // TODO: use the BC pretty printer instead
-                hereString = Some(BashExpressions.Interpolated(
-                  List(
-                    BashExpressions.Literal(functionName),
-                    BashExpressions.Literal("("),
-                    BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(temporarySymbol1.identifier))),
-                    BashExpressions.Literal(")")
-                  )
-                ))
+                hereString = Some(
+                  BashExpressions.Literal(BcPrettyPrint.print(
+                    BcExpressions.FunctionCall(functionName,
+                      BcExpressions.BashVariable(BashIdentifier(temporarySymbol1.identifier))))))
               ))
             )
           ))

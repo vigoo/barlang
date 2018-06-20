@@ -14,7 +14,11 @@ object BashStatements {
   case class Command(name: BashExpression, params: List[BashExpression], hereString: Option[BashExpression] = None) extends BashStatement
   case class IfThenElse(conditional: BashExpression, onTrue: BashStatement, onFalse: BashStatement) extends BashStatement
   case class Declare(options: Set[BashDeclareOption], name: BashIdentifier, initialValue: Option[BashExpression]) extends BashStatement
+  case class Local(options: Set[BashDeclareOption], name: BashIdentifier, initialValue: Option[BashExpression]) extends BashStatement
   case class Let(expression: List[BashArithmeticExpression]) extends BashStatement
+  case class Function(name: BashIdentifier, body: BashStatement) extends BashStatement
+  case class Eval(statement: BashStatement) extends BashStatement
+  case class ArrayUpdate(target: BashIdentifier, index: BashExpression, value: BashExpression) extends BashStatement
   case class Sequence(statements: List[BashStatement]) extends BashStatement {
     override def flatten: List[BashStatement] =
       statements.flatMap(_.flatten)
@@ -48,6 +52,7 @@ object BashExpressions {
 sealed trait BashVariable
 object BashVariables {
   case class Variable(name: BashIdentifier) extends BashVariable
+  case class Positional(index: Int) extends BashVariable
 }
 
 sealed trait BashOption

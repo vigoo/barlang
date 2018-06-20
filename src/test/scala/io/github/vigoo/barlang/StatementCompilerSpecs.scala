@@ -3,8 +3,8 @@ package io.github.vigoo.barlang
 import io.github.vigoo.barlang.compiler.Compiler._
 import io.github.vigoo.barlang.language.BinaryOperators
 import io.github.vigoo.barlang.language.Expressions._
-import io.github.vigoo.barlang.language.SingleStatements.VariableDeclaration
-import io.github.vigoo.barlang.language.{SingleStatement, SymbolName, Type, Types}
+import io.github.vigoo.barlang.language.SingleStatements._
+import io.github.vigoo.barlang.language.{FunctionProperties, SingleStatement, Statement, Statements, SymbolName, Type, Types, ParamDef}
 import io.github.vigoo.bash.language._
 import org.atnos.eff.syntax.all._
 import org.specs2._
@@ -13,7 +13,7 @@ import org.specs2.matcher.Matcher
 class StatementCompilerSpecs extends Specification {
   def is =
     s2"""
-  The compiler is able to
+  The compiler compiles
     variable declaration with string literal         $variableDeclStringLit
     variable declaration with bool literal           $variableDeclBoolLit
     variable declaration from another variable       $variableDeclOtherVariable
@@ -29,6 +29,14 @@ class StatementCompilerSpecs extends Specification {
     variable declaration from a predefined funcall   $variableDeclPredefinedFunCall
     variable declaration from a string expression    $variableDeclStringExpr
     variable declaration from a boolean expression   $variableDeclBoolExpr
+
+    function definition with zero parameters           $funDefZeroParams
+    function definition without params returning array $funDefReturnArray
+    function definition with multiple parameters       $funDefMultiParams
+
+    function call in statement position                $funCallStatement
+
+    simple command execution                           $runStatement
   """
 
   val exampleContext: Map[SymbolName, Type] = Map(
@@ -70,12 +78,12 @@ class StatementCompilerSpecs extends Specification {
       BashStatements.Sequence(List(
         BashStatements.Declare(
           Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly),
-          BashIdentifier("__tmp1"),
+          BashIdentifier("_tmp1"),
           Some(BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("strLst")), BashArrayIndices.All))
         ),
         BashStatements.Assign(
           BashIdentifier("second"),
-          BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("__tmp1")),
+          BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("_tmp1")),
             BashArrayIndices.Index(BashExpressions.Literal("1"))))
       ))
     )
@@ -99,13 +107,13 @@ class StatementCompilerSpecs extends Specification {
           IntLiteral(2)))) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Assign(BashIdentifier("__tmp1"), BashExpressions.Eval(
+        BashStatements.Assign(BashIdentifier("_tmp1"), BashExpressions.Eval(
           BashStatements.Command(
             BashExpressions.Literal("bc"),
             List(BashExpressions.Literal("-l")),
             Some(BashExpressions.Literal("(1.0) + (($x) / (2.0))")))
         )),
-        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1"))))))
+        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp1"))))))
     )
 
   def variableDeclIntegerExpr =
@@ -117,7 +125,7 @@ class StatementCompilerSpecs extends Specification {
           IntLiteral(2)))) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Assign(BashIdentifier("__tmp1"), BashExpressions.EvalArithmetic(
+        BashStatements.Assign(BashIdentifier("_tmp1"), BashExpressions.EvalArithmetic(
           BashArithmeticExpressions.Add(
             BashArithmeticExpressions.Number(1),
             BashArithmeticExpressions.Div(
@@ -126,7 +134,7 @@ class StatementCompilerSpecs extends Specification {
             )
           )
         )),
-        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1"))))))
+        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp1"))))))
     )
 
   def variableDeclPredefConst =
@@ -140,13 +148,13 @@ class StatementCompilerSpecs extends Specification {
       Apply(Variable(SymbolName("f")), List(Variable(SymbolName("x")), StringLiteral("abc")))) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Assign(BashIdentifier("__tmp1"), BashExpressions.Literal("")),
+        BashStatements.Assign(BashIdentifier("_tmp1"), BashExpressions.Literal("")),
         BashStatements.Command(BashExpressions.Literal("f"), List(
-          BashExpressions.Literal("__tmp1"),
+          BashExpressions.Literal("_tmp1"),
           BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("x"))),
           BashExpressions.Literal("abc")
         )),
-        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1"))))
+        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp1"))))
       ))
     )
 
@@ -156,13 +164,13 @@ class StatementCompilerSpecs extends Specification {
       Apply(Predefined(SymbolName("toInt")), List(Predefined(SymbolName("pi"))))) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Assign(BashIdentifier("__tmp1"), BashExpressions.Literal("3.141592653589793")),
-        BashStatements.Assign(BashIdentifier("__tmp2"), BashExpressions.Eval(
+        BashStatements.Assign(BashIdentifier("_tmp1"), BashExpressions.Literal("3.141592653589793")),
+        BashStatements.Assign(BashIdentifier("_tmp2"), BashExpressions.Eval(
           BashStatements.Command(BashExpressions.Literal("printf"), List(
             BashExpressions.Literal("%.0f"),
-            BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1")))
+            BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp1")))
           )))),
-        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp2"))))
+        BashStatements.Assign(BashIdentifier("test"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp2"))))
       ))
     )
 
@@ -173,11 +181,11 @@ class StatementCompilerSpecs extends Specification {
         ArrayAccess(SymbolName("strLst"), IntLiteral(2)))) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Declare(Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly), BashIdentifier("__tmp1"),
+        BashStatements.Declare(Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly), BashIdentifier("_tmp1"),
           Some(BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("strLst")), BashArrayIndices.All))),
         BashStatements.Assign(BashIdentifier("test"), BashExpressions.Interpolated(List(
           BashExpressions.Literal("TEST"),
-          BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("__tmp1")), BashArrayIndices.Index(BashExpressions.Literal("2"))))))))
+          BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("_tmp1")), BashArrayIndices.Index(BashExpressions.Literal("2"))))))))
     )
 
   def variableDeclBoolExpr =
@@ -193,20 +201,117 @@ class StatementCompilerSpecs extends Specification {
       )) must compileTo(
 
       BashStatements.Sequence(List(
-        BashStatements.Assign(BashIdentifier("__tmp1"),
+        BashStatements.Assign(BashIdentifier("_tmp1"),
           BashExpressions.Literal("")),
         BashStatements.Command(BashExpressions.Literal("f"),List(
-          BashExpressions.Literal("__tmp1"),
+          BashExpressions.Literal("_tmp1"),
           BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("x"))),
           BashExpressions.Literal("abc")),None),
-        BashStatements.Assign(BashIdentifier("__tmp2"),
-          BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp1")))),
-        BashStatements.Assign(BashIdentifier("__tmp3"),
+        BashStatements.Assign(BashIdentifier("_tmp2"),
+          BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp1")))),
+        BashStatements.Assign(BashIdentifier("_tmp3"),
           BashExpressions.Or(
             BashExpressions.Conditional(BashConditions.Less(BashConditions.Variable(BashVariables.Variable(BashIdentifier("x"))),BashConditions.Literal("10"))),
-            BashExpressions.Conditional(BashConditions.NotEquals(BashConditions.Variable(BashVariables.Variable(BashIdentifier("__tmp2"))),BashConditions.Literal("hello"))))),
-        BashStatements.Assign(BashIdentifier("test"),BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("__tmp3"))))))
+            BashExpressions.Conditional(BashConditions.StringNotEquals(BashConditions.Variable(BashVariables.Variable(BashIdentifier("_tmp2"))),BashConditions.Literal("hello"))))),
+        BashStatements.Assign(BashIdentifier("test"),BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("_tmp3"))))))
     )
+
+  def funDefZeroParams =
+    FunctionDefinition(
+      SymbolName("testfn0"),
+      FunctionProperties(inline = false),
+      List.empty,
+      List.empty,
+      Types.Int(),
+      Statements.Single(
+        Return(IntLiteral(42))
+      )
+    ) must compileTo(
+      BashStatements.Function(
+        BashIdentifier("testfn0"),
+        BashStatements.Sequence(List(
+          BashStatements.Local(Set.empty, BashIdentifier("testfn0__retvar"), Some(BashExpressions.ReadVariable(BashVariables.Positional(1)))),
+          BashStatements.Assign(BashIdentifier("testfn0__tmp1"), BashExpressions.Literal("42")),
+          BashStatements.Eval(
+            BashStatements.Assign(BashIdentifier("testfn0__retvar"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("testfn0__tmp1")))))
+        ))
+      )
+    )
+
+  def funDefReturnArray =
+    FunctionDefinition(
+      SymbolName("testfn1"),
+      FunctionProperties(inline = false),
+      List.empty,
+      List.empty,
+      Types.Array(Types.String()),
+      Statement.fromSingleStatements(List(
+        ArrayDeclaration(SymbolName("result"), Types.String()),
+        UpdateCell(SymbolName("result"), IntLiteral(0), StringLiteral("hello")),
+        Return(Variable(SymbolName("result")))
+      ))
+    ) must compileTo(
+      BashStatements.Function(
+        BashIdentifier("testfn1"),
+        BashStatements.Sequence(List(
+          BashStatements.Local(Set.empty, BashIdentifier("testfn1__retvar"), Some(BashExpressions.ReadVariable(BashVariables.Positional(1)))),
+          BashStatements.Declare(Set(BashDeclareOptions.Array), BashIdentifier("testfn1_result"), None),
+          BashStatements.ArrayUpdate(BashIdentifier("testfn1_result"), BashExpressions.Literal("0"), BashExpressions.Literal("hello")),
+          BashStatements.Eval(
+            BashStatements.Assign(BashIdentifier("testfn1__retvar"), BashExpressions.ReadArray(BashVariables.Variable(BashIdentifier("testfn1_result")), BashArrayIndices.All)))
+        ))
+      )
+    )
+
+  def funDefMultiParams =
+    FunctionDefinition(
+      SymbolName("testfn2"),
+      FunctionProperties(inline = true),
+      List.empty,
+      List(
+        ParamDef(SymbolName("x"), Types.Int()),
+        ParamDef(SymbolName("y"), Types.Int())),
+      Types.Int(),
+      Statements.Single(
+        Return(BinaryOp(BinaryOperators.Mul, Variable(SymbolName("x")), Variable(SymbolName("y"))))
+      )
+    ) must compileTo(
+      BashStatements.Function(
+        BashIdentifier("testfn2"),
+        BashStatements.Sequence(List(
+          BashStatements.Local(Set.empty, BashIdentifier("testfn2__retvar"), Some(BashExpressions.ReadVariable(BashVariables.Positional(1)))),
+          BashStatements.Local(Set(BashDeclareOptions.ReadOnly), BashIdentifier("testfn2_x"), Some(BashExpressions.ReadVariable(BashVariables.Positional(2)))),
+          BashStatements.Local(Set(BashDeclareOptions.ReadOnly), BashIdentifier("testfn2_y"), Some(BashExpressions.ReadVariable(BashVariables.Positional(3)))),
+          BashStatements.Assign(BashIdentifier("testfn2__tmp1"), BashExpressions.EvalArithmetic(
+            BashArithmeticExpressions.Mul(
+              BashArithmeticExpressions.Variable(BashVariables.Variable(BashIdentifier("testfn2_x"))),
+              BashArithmeticExpressions.Variable(BashVariables.Variable(BashIdentifier("testfn2_y")))))),
+          BashStatements.Assign(BashIdentifier("testfn2__tmp2"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("testfn2__tmp1")))),
+          BashStatements.Eval(
+            BashStatements.Assign(BashIdentifier("testfn2__retvar"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("testfn2__tmp2")))))
+        ))
+      )
+    )
+
+  def funCallStatement =
+    Call(
+      StringLiteral("g"),
+      List(StringLiteral("abc"))) must compileTo(
+
+      BashStatements.Command(BashExpressions.Literal("g"), List(
+          BashExpressions.Literal("abc")
+        )))
+
+  def runStatement =
+    Run(
+      StringLiteral("grep"),
+      List(StringLiteral("x"), StringLiteral("y.log"))) must compileTo(
+
+      BashStatements.Command(
+        BashExpressions.Literal("grep"), List(
+          BashExpressions.Literal("x"),
+          BashExpressions.Literal("y.log")
+      )))
 
   def compileTo(bashStatement: BashStatement): Matcher[SingleStatement] =
     beRight(bashStatement) ^^ { (singleStatement: SingleStatement) =>

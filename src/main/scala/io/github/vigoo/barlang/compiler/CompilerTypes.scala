@@ -19,7 +19,7 @@ trait CompilerTypes {
     override def identifierPrefix: String = ""
   }
   case class FunctionScope(name: SymbolName, parent: Scope) extends Scope {
-    override def identifierPrefix: String = s"${parent.identifierPrefix}${name}_"
+    override def identifierPrefix: String = s"${parent.identifierPrefix}${name.name}_" // TODO: only do this when colliding with sysvars (and use local everywhere)
   }
 
   case class AssignedSymbol(name: SymbolName, identifier: String)
@@ -80,6 +80,8 @@ trait CompilerTypes {
 
   case class UnsupportedTypeInBooleanExpression(name: SymbolName, typ: ExtendedType) extends CompilerError
 
+  case class UnsupportedReturnExpression(expression: Expression) extends CompilerError
+
   case class UnknownError(reason: Throwable) extends CompilerError
 
   case class IllegalState(reason: String) extends CompilerError
@@ -127,7 +129,7 @@ trait CompilerTypes {
   type CompilerResult[A] = Either[CompilerError, A]
   type StatementCompiler = Fx.fx2[CompilerResult, State[Context, ?]]
   type PrerequisiteWriter[A] = Writer[Eff[StatementCompiler, BashStatement], A]
-  type ExpressionCompiler= Fx.prepend[PrerequisiteWriter[?], StatementCompiler]
+  type ExpressionCompiler = Fx.prepend[PrerequisiteWriter[?], StatementCompiler]
 
   type _compilerResult[R] = Either[CompilerError, ?] |= R
   type _compilerState[R] = State[Context, ?] |= R
@@ -170,7 +172,7 @@ trait CompilerTypes {
     for {
       context <- get[R, Context]
       next = context.lastTmp + 1
-      idString = s"_${context.scope.identifierPrefix}_tmp$next"
+      idString = s"${context.scope.identifierPrefix}_tmp$next"
       _ <- put[R, Context](context.copy(lastTmp = next))
     } yield AssignedSymbol(SymbolName(s"tmp$next"), idString)
   }

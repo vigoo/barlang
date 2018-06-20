@@ -5,7 +5,7 @@ import cats.implicits._
 import io.github.vigoo.bash.language.BashConditions.StringEquals
 import io.github.vigoo.bash.language.BashExpressions._
 import io.github.vigoo.bash.language.BashStatements._
-import io.github.vigoo.bash.language.BashVariables.Variable
+import io.github.vigoo.bash.language.BashVariables.{Positional, Variable}
 import io.github.vigoo.simpp.PrettyPrint.PrettyPrinterContext
 import io.github.vigoo.simpp.{PrettyPrint, PrettyPrinter}
 import org.atnos.eff._
@@ -60,7 +60,25 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
         indented(pretty(onFalse)) >> newline >>
         code("fi")
     case Declare(options, identifier, optionalInitialValue) =>
-      val prefix = code("declare") >> space >> pretty(sequence(options.toList, separator = " ")) >> space >> code(identifier.name)
+      val opts = if (options.isEmpty) {
+        empty
+      } else {
+        space >> pretty(sequence(options.toList, separator = " "))
+      }
+      val prefix = code("declare") >> opts >> space >> code(identifier.name)
+      optionalInitialValue match {
+        case Some(initialValue) =>
+          prefix >> code("=") >> pretty(initialValue)
+        case None =>
+          prefix
+      }
+    case Local(options, identifier, optionalInitialValue) =>
+      val opts = if (options.isEmpty) {
+        empty
+      } else {
+        space >> pretty(sequence(options.toList, separator = " "))
+      }
+      val prefix = code("local") >> opts >> space >> code(identifier.name)
       optionalInitialValue match {
         case Some(initialValue) =>
           prefix >> code("=") >> pretty(initialValue)
@@ -69,6 +87,12 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
       }
     case Let(expressions) =>
       code("let") >> space >> pretty(sequence(expressions.map(expr => doubleQuoted(expr)), separator = " "))
+    case Function(name, body) =>
+      code("function") >> space >> pretty(name) >> space >> code("{") >> newline >>
+        indented(pretty(body)) >> newline
+      code("}")
+    case BashStatements.Eval(statement) =>
+      code("eval") >> space >> pretty(statement)
 
     case Sequence(statements) =>
       pretty(sequence(statements, "\n"))
@@ -79,6 +103,7 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
 
   implicit val bashVariablePrettyPrinter: PPrinter[BashVariable] = {
     case Variable(name) => pretty(name)
+    case Positional(index) => pretty(index.toString)
   }
 
   implicit val bashArrayIndexPrettyPrinter: PPrinter[BashArrayIndex] = {
@@ -106,7 +131,7 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
     case ReadArray(variable, index) =>
       dollar >> curlyBracketed(pretty(variable) >> squareBracketed(index))
 
-    case Eval(statement) => between("$(", ")", statement)
+    case BashExpressions.Eval(statement) => between("$(", ")", statement)
     case Conditional(condition) => between("[[ ", " ]]", condition)
     case Interpolated(parts) => doubleQuoted(inString(pretty(sequence(parts))))
     case EvalArithmetic(expression) => between("$(( ", " ))", expression)

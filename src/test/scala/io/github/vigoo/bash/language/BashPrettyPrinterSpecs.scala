@@ -15,7 +15,8 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print empty literal correctly       $prettyPrintConditionLiteralFalse
 
     The bash variable pretty printer should
-      print simple variables correctly    $prettyPrintVariable
+      print simple variables correctly     $prettyPrintVariable
+      print positional variables correctly $prettyPrintPositional
 
     The bash identifier pretty printer should
       print identifiers correctly         $prettyPrintIdentifier
@@ -36,7 +37,9 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print if-then-else correctly        $prettyPrintStatementIfThenElse
       print sequence correctly            $prettyPrintStatementSequence
       print declare correctly             $prettyPrintStatementDeclare
+      print local correctly               $prettyPrintStatementLocal
       print let correctly                 $prettyPrintStatementLet
+      print eval correctly                $prettyPrintStatementEval
     """
 
   override val pp = BashPrettyPrint
@@ -63,6 +66,10 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       (Variable(BashIdentifier("X")) should bePrintedAs("X"))
   }
 
+  def prettyPrintPositional = {
+    Positional(1) should bePrintedAs("1")
+  }
+
   def prettyPrintIdentifier = {
     BashIdentifier("TEST_VARIABLE") should bePrintedAs("TEST_VARIABLE")
   }
@@ -87,8 +94,8 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   }
 
   def prettyPrintExpressionEval = {
-    (Eval(Command(Literal("test"), List.empty)) should bePrintedAs("$(test)")) and
-      (Eval(Command(Literal("test"), List(Literal("x"), Literal("something else"), Literal("y")))) should bePrintedAs("$(test x \"something else\" y)"))
+    (BashExpressions.Eval(Command(Literal("test"), List.empty)) should bePrintedAs("$(test)")) and
+      (BashExpressions.Eval(Command(Literal("test"), List(Literal("x"), Literal("something else"), Literal("y")))) should bePrintedAs("$(test x \"something else\" y)"))
   }
 
   def prettyPrintExpressionConditional = {
@@ -137,12 +144,22 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       (Declare(Set(BashDeclareOptions.Array), BashIdentifier("LST"), Some(ReadVariable(Variable(BashIdentifier("TMP"))))) should bePrintedAs("declare -a LST=${TMP}"))
   }
 
+  def prettyPrintStatementLocal = {
+    (Local(Set.empty, BashIdentifier("X"), Some(ReadVariable(Positional(5)))) should bePrintedAs("local X=$5")) and
+      (Local(Set(BashDeclareOptions.ReadOnly), BashIdentifier("OTHER"), Some(Literal("test"))) should bePrintedAs("local -r OTHER=test"))
+  }
+
   def prettyPrintStatementLet = {
     Let(List(BashArithmeticExpressions.AssignRem(
       Variable(BashIdentifier("TEST")),
       BashArithmeticExpressions.Exponentiation(
         BashArithmeticExpressions.Number(2), BashArithmeticExpressions.Number(3)
       )))) should bePrintedAs("let \"TEST %= (2 ** 3)\"")
+  }
+
+  def prettyPrintStatementEval = {
+    val statement = BashStatements.Eval(Assign(BashIdentifier("testfn2__retvar"), ReadVariable(Variable(BashIdentifier("testfn2__tmp2")))))
+    statement should bePrintedAs("eval testfn2__retvar=${testfn2__tmp2}")
   }
 
   def prettyPrintStatementSequence = {

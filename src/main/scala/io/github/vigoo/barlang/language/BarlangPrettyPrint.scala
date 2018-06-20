@@ -1,5 +1,6 @@
 package io.github.vigoo.barlang.language
 
+import cats.Traverse
 import io.github.vigoo.barlang.language.BinaryOperators._
 import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language.SingleStatements._
@@ -146,14 +147,13 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
 
     case Run(command, parameters) =>
       code("> ") >> pretty(command) >> space >>
-      // TODO: do not use sequenceA
-        Eff.sequenceA[R, List, Unit](parameters.zipWithIndex.map { case (item, index) =>
+        Traverse[List].traverse(parameters.zipWithIndex) { case (item, index) =>
           (if (index > 0) {
             space
           } else {
             empty
           }) >> pretty(item)
-        }).map(_ => ())
+        }.map(_ => ())
 
     case If(condition, trueBody, falseBody) =>
       code("if") >> space >> pretty(condition) >> space >> code("then") >> newline >>
