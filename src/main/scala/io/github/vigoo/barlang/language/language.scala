@@ -1,5 +1,7 @@
 package io.github.vigoo.barlang.language
 
+import cats.Monoid
+
 import scala.annotation.tailrec
 import scala.util.parsing.input.Positional
 
@@ -107,6 +109,9 @@ object Expressions {
 case class ParamDef(name: SymbolName, typ: Type) extends Positional
 
 
+case class VariableProperties(mutable: Boolean)
+
+
 case class FunctionProperties(inline: Boolean)
 
 
@@ -114,7 +119,7 @@ sealed trait SingleStatement extends Positional
 
 object SingleStatements {
 
-  case class VariableDeclaration(name: SymbolName, value: Expression) extends SingleStatement
+  case class VariableDeclaration(name: SymbolName, properties: VariableProperties, value: Expression) extends SingleStatement
 
   case class FunctionDefinition(name: SymbolName, properties: FunctionProperties, typeParams: List[TypeParam], paramDefs: List[ParamDef], returnType: Type, body: Statement) extends SingleStatement
 
@@ -162,6 +167,18 @@ object Statement {
       case head :: Nil => Statements.Single(head)
       case head :: tail => Statements.Sequence(head, fromSingleStatements(tail))
     }
+  }
+
+  implicit val statementMonoid: Monoid[Statement] = new Monoid[Statement] {
+    override def empty: Statement = Statements.NoOp
+
+    override def combine(x: Statement, y: Statement): Statement =
+      (x, y) match {
+        case (Statements.NoOp, _) => y
+        case (_, Statements.NoOp) => x
+        case (Statements.Single(singleX), _) => Statements.Sequence(singleX, y)
+        case _ => Statement.fromSingleStatements(x.toList ++ y.toList)
+      }
   }
 }
 

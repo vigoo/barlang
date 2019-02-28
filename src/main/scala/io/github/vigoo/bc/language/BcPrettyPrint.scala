@@ -15,6 +15,7 @@ object BcPrettyPrint extends PrettyPrint[NoFx] {
 
   implicit val expressionPrettyPrint: PPrinter[BcExpression] = {
     case BcExpressions.Number(value) => code(value.toString)
+    case BcExpressions.FunctionCall(name, parameter) => code(name) >> parenthesed(parameter)
     case BcExpressions.BashVariable(identifier) => code(BashPrettyPrint.print(BashExpressions.ReadVariable(BashVariables.Variable(identifier))))
     case BcExpressions.Add(x, y) => parenthesed(x) >> space >> code("+") >> space >> parenthesed(y)
     case BcExpressions.Sub(x, y) => parenthesed(x) >> space >> code("-") >> space >> parenthesed(y)

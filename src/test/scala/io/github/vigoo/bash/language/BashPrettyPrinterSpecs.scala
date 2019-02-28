@@ -40,6 +40,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
       print local correctly               $prettyPrintStatementLocal
       print let correctly                 $prettyPrintStatementLet
       print eval correctly                $prettyPrintStatementEval
+      print array update correctly        $prettyPrintStatementArrayUpdate
     """
 
   override val pp = BashPrettyPrint
@@ -76,7 +77,16 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
 
   def prettyPrintExpressionLiteral = {
     (Literal("something") should bePrintedAs("something")) and
-      (Literal("something with whitespace") should bePrintedAs("\"something with whitespace\""))
+      (Literal("something with whitespace") should bePrintedAs("\"something with whitespace\"")) and
+      (Literal("&") should bePrintedAs("\"&\"")) and
+      (Literal("+") should bePrintedAs("\"+\"")) and
+      (Literal("?") should bePrintedAs("\"?\"")) and
+      (Literal("[") should bePrintedAs("\"[\"")) and
+      (Literal("]") should bePrintedAs("\"]\"")) and
+      (Literal("`") should bePrintedAs("\"`\"")) and
+      (Literal("~") should bePrintedAs("\"~\"")) and
+      (Literal("\"") should bePrintedAs("\"\\\"\"")) and
+      (Literal("\\") should bePrintedAs("\"\\\\\""))
   }
 
   def prettyPrintExpressionReadVariable = {
@@ -125,7 +135,7 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
   def prettyPrintStatementCommand = {
     (Command(Literal("echo"), List(Literal("Hello world"))) should bePrintedAs("echo \"Hello world\"")) and
       (Command(ReadVariable(Variable(BashIdentifier("AWS"))), List(Literal("describe-instance"), Literal("i-test"))) should bePrintedAs("${AWS} describe-instance i-test")) and
-      (Command(Literal("bc"), List(Literal("-l")), hereString = Some(Literal("5+5"))) should bePrintedAs("bc -l <<< 5+5"))
+      (Command(Literal("bc"), List(Literal("-l")), hereString = Some(Literal("5+5"))) should bePrintedAs("bc -l <<< \"5+5\""))
   }
 
   def prettyPrintStatementIfThenElse = {
@@ -162,6 +172,14 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
     statement should bePrintedAs("eval testfn2__retvar=${testfn2__tmp2}")
   }
 
+  def prettyPrintStatementArrayUpdate = {
+    BashStatements.ArrayUpdate(
+      BashIdentifier("TABLE"),
+      BashExpressions.Literal("3"),
+      BashExpressions.Literal("something")
+    ) should bePrintedAs("TABLE[3]=something")
+  }
+
   def prettyPrintStatementSequence = {
     val statement =
       Sequence(List(
@@ -173,6 +191,6 @@ class BashPrettyPrinterSpecs extends Specification with PrettyPrinterTests[BashP
     statement should bePrintedAs(
       """echo "Hello world"
         |${AWS} describe-instance i-test
-        |bc -l <<< 5+5""".stripMargin)
+        |bc -l <<< "5+5"""".stripMargin)
   }
 }

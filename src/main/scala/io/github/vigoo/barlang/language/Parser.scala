@@ -26,6 +26,8 @@ object Parser {
 
     case class Val() extends Token
 
+    case class Var() extends Token
+
     case class Def() extends Token
 
     case class Colon() extends Token
@@ -140,6 +142,10 @@ object Parser {
 
     private def `val` = positioned {
       "val" ^^ (_ => Tokens.Val())
+    }
+
+    private def `var` = positioned {
+      "var" ^^ (_ => Tokens.Var())
     }
 
     private def `def` = positioned {
@@ -290,7 +296,7 @@ object Parser {
     def tokens: Parser[List[Token]] =
       phrase(
         rep1(parenStart | bracketStart | comma | bracketEnd | parenEnd |
-          bool | string | int | double | unit | arrow | `return` | `val` | `def` | colon | end | inline |
+          bool | string | int | double | unit | arrow | `return` | `val` | `var` | `def` | colon | end | inline |
           `if` | `then` | `else` | fn | and | or | not | `while` | backArrow | array |
           boolLiteral | doubleLiteral | intLiteral | stringLiteral |
           doubleEquals | equals | lessEquals | less | greaterEquals | greater | mul | div | plus | minus | mod |
@@ -481,10 +487,13 @@ object Parser {
     private def expression: Parser[Expression] =
       exprL1
 
+    private def valOrVar: Parser[VariableProperties] =
+      Val() ^^ (_ => VariableProperties(mutable = false)) | Var() ^^ (_ => VariableProperties(mutable = true))
+
     private def variableDecl: Parser[SingleStatement] =
       positioned {
-        Val() ~> identifier ~ Equals() ~ expression <~ atLeastOneNewLine ^^ { case name ~ _ ~ expr =>
-          SingleStatements.VariableDeclaration(name, expr)
+        valOrVar ~ identifier ~ Equals() ~ expression <~ atLeastOneNewLine ^^ { case props ~ name ~ _ ~ expr =>
+          SingleStatements.VariableDeclaration(name, props, expr)
         }
       }
 

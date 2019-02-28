@@ -4,7 +4,7 @@ import io.github.vigoo.barlang.compiler.Compiler._
 import io.github.vigoo.barlang.language.BinaryOperators
 import io.github.vigoo.barlang.language.Expressions._
 import io.github.vigoo.barlang.language.SingleStatements._
-import io.github.vigoo.barlang.language.{FunctionProperties, SingleStatement, Statement, Statements, SymbolName, Type, Types, ParamDef}
+import io.github.vigoo.barlang.language.{FunctionProperties, ParamDef, SingleStatement, Statement, Statements, SymbolName, Type, Types, VariableProperties}
 import io.github.vigoo.bash.language._
 import org.atnos.eff.syntax.all._
 import org.specs2._
@@ -47,34 +47,34 @@ class StatementCompilerSpecs extends Specification {
   )
 
   def variableDeclStringLit =
-    VariableDeclaration(SymbolName("test"), StringLiteral("hello world")) must compileTo(
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), StringLiteral("hello world")) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal("hello world"))
     )
 
   def variableDeclBoolLit =
-    (VariableDeclaration(SymbolName("test"), BoolLiteral(true)) must compileTo(
+    (VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), BoolLiteral(true)) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal("0"))
-    )) and (VariableDeclaration(SymbolName("test"), BoolLiteral(false)) must compileTo(
+    )) and (VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), BoolLiteral(false)) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal("1"))
     ))
 
   def variableDeclOtherVariable =
-    VariableDeclaration(SymbolName("y"), Variable(SymbolName("x"))) must compileTo(
+    VariableDeclaration(SymbolName("y"), VariableProperties(mutable = false), Variable(SymbolName("x"))) must compileTo(
       BashStatements.Assign(BashIdentifier("y"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("x"))))
     )
 
   def variableDeclSysVar =
-    VariableDeclaration(SymbolName("path2"), SystemVariable(SymbolName("PATH"))) must compileTo(
+    VariableDeclaration(SymbolName("path2"), VariableProperties(mutable = false), SystemVariable(SymbolName("PATH"))) must compileTo(
       BashStatements.Assign(BashIdentifier("path2"), BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier("PATH"))))
     )
 
   def variableDeclFunctionRef =
-    VariableDeclaration(SymbolName("fn"), Variable(SymbolName("f"))) must compileTo(
+    VariableDeclaration(SymbolName("fn"), VariableProperties(mutable = false), Variable(SymbolName("f"))) must compileTo(
       BashStatements.Assign(BashIdentifier("fn"), BashExpressions.Literal("f"))
     )
 
   def variableDeclArrayElem =
-    VariableDeclaration(SymbolName("second"), ArrayAccess(SymbolName("strLst"), IntLiteral(1))) must compileTo(
+    VariableDeclaration(SymbolName("second"), VariableProperties(mutable = false), ArrayAccess(SymbolName("strLst"), IntLiteral(1))) must compileTo(
       BashStatements.Sequence(List(
         BashStatements.Declare(
           Set(BashDeclareOptions.Array, BashDeclareOptions.ReadOnly),
@@ -89,17 +89,17 @@ class StatementCompilerSpecs extends Specification {
     )
 
   def variableDeclIntLit =
-    VariableDeclaration(SymbolName("test"), IntLiteral(10)) must compileTo(
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), IntLiteral(10)) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal("10"))
     )
 
   def variableDeclDoubleLit =
-    VariableDeclaration(SymbolName("test"), DoubleLiteral(0.1)) must compileTo(
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), DoubleLiteral(0.1)) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal("0.1"))
     )
 
   def variableDeclDoubleExpr =
-    VariableDeclaration(SymbolName("test"),
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false),
       BinaryOp(BinaryOperators.Add,
         DoubleLiteral(1.0),
         BinaryOp(BinaryOperators.Div,
@@ -117,7 +117,7 @@ class StatementCompilerSpecs extends Specification {
     )
 
   def variableDeclIntegerExpr =
-    VariableDeclaration(SymbolName("test"),
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false),
       BinaryOp(BinaryOperators.Add,
         IntLiteral(1),
         BinaryOp(BinaryOperators.Div,
@@ -138,13 +138,13 @@ class StatementCompilerSpecs extends Specification {
     )
 
   def variableDeclPredefConst =
-    VariableDeclaration(SymbolName("test"), Predefined(SymbolName("pi"))) must compileTo(
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false), Predefined(SymbolName("pi"))) must compileTo(
       BashStatements.Assign(BashIdentifier("test"), BashExpressions.Literal(Math.PI.toString))
     )
 
   def variableDeclFunCall =
     VariableDeclaration(
-      SymbolName("test"),
+      SymbolName("test"), VariableProperties(mutable = false),
       Apply(Variable(SymbolName("f")), List(Variable(SymbolName("x")), StringLiteral("abc")))) must compileTo(
 
       BashStatements.Sequence(List(
@@ -160,7 +160,7 @@ class StatementCompilerSpecs extends Specification {
 
   def variableDeclPredefinedFunCall =
     VariableDeclaration(
-      SymbolName("test"),
+      SymbolName("test"), VariableProperties(mutable = false),
       Apply(Predefined(SymbolName("toInt")), List(Predefined(SymbolName("pi"))))) must compileTo(
 
       BashStatements.Sequence(List(
@@ -175,7 +175,7 @@ class StatementCompilerSpecs extends Specification {
     )
 
   def variableDeclStringExpr =
-    VariableDeclaration(SymbolName("test"),
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false),
       BinaryOp(BinaryOperators.Add,
         StringLiteral("TEST"),
         ArrayAccess(SymbolName("strLst"), IntLiteral(2)))) must compileTo(
@@ -189,7 +189,7 @@ class StatementCompilerSpecs extends Specification {
     )
 
   def variableDeclBoolExpr =
-    VariableDeclaration(SymbolName("test"),
+    VariableDeclaration(SymbolName("test"), VariableProperties(mutable = false),
       BinaryOp(BinaryOperators.Or,
         BinaryOp(BinaryOperators.Less,
           Variable(SymbolName("x")),
@@ -324,6 +324,7 @@ class StatementCompilerSpecs extends Specification {
       scope = GlobalScope,
       symbols = types.map { case (name, _) => name -> AssignedSymbol(name, GlobalScope.identifierPrefix + name.name) },
       symbolTypes = types.mapValues(SimpleType.apply),
+      mutability = types.map { case (name, _) => name -> false },
       lastTmp = 0
     )
     customContext

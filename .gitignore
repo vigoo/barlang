@@ -5,4 +5,5 @@ project/boot/
 .history
 .cache
 .idea/
-src/main/scala/io/github/vigoo/barlang/language/play.sc
+.bloop
+

@@ -1,6 +1,9 @@
 package io.github.vigoo.barlang.compiler
 
+import io.github.vigoo.barlang.compiler.Compiler.predefined
 import io.github.vigoo.barlang.language.Expressions._
+import io.github.vigoo.barlang.language.SingleStatements._
+import io.github.vigoo.barlang.language.Statements.{NoOp, Sequence, Single}
 import io.github.vigoo.barlang.language._
 import io.github.vigoo.bash.language._
 import io.github.vigoo.bc.language.{BcExpressions, BcPrettyPrint}
@@ -96,6 +99,10 @@ trait Predefined {
       typ match {
         case SimpleType(Types.String()) =>
           pure[ExpressionCompiler, BashExpression](BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(assignedSymbol.identifier))))
+        case SimpleType(Types.Int()) =>
+          pure[ExpressionCompiler, BashExpression](BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(assignedSymbol.identifier))))
+        case SimpleType(Types.Double()) =>
+          pure[ExpressionCompiler, BashExpression](BashExpressions.ReadVariable(BashVariables.Variable(BashIdentifier(assignedSymbol.identifier))))
         case SimpleType(Types.Bool()) =>
           for {
             temporarySymbol <- generateTempSymbol[ExpressionCompiler]
@@ -164,4 +171,48 @@ trait Predefined {
       case Some(PredefinedValue(_, _, CustomExpression(_))) => true
       case _ => false
     }
+
+  def replacePredefs(statement: SingleStatement): SingleStatement = statement match {
+    case VariableDeclaration(name, props, value) =>
+      VariableDeclaration(name, props, replacePredefs(value))
+    case FunctionDefinition(name, properties, typeParams, paramDefs, returnType, body) =>
+      FunctionDefinition(name, properties, typeParams, paramDefs, returnType, replacePredefs(body))
+    case Call(function, parameters) =>
+      Call(function, parameters.map(replacePredefs))
+    case Run(command, parameters) =>
+      Run(replacePredefs(command), parameters.map(replacePredefs))
+    case If(condition, trueBody, falseBody) =>
+      If(replacePredefs(condition), replacePredefs(trueBody), replacePredefs(falseBody))
+    case While(condition, body) =>
+      While(replacePredefs(condition), replacePredefs(body))
+    case UpdateVariable(name, value) =>
+      UpdateVariable(name, replacePredefs(value))
+    case UpdateCell(name, index, value) =>
+      UpdateCell(name, replacePredefs(index), replacePredefs(value))
+    case ArrayDeclaration(name, elementType) =>
+      ArrayDeclaration(name, elementType)
+    case Return(value) =>
+      Return(replacePredefs(value))
+  }
+
+  def replacePredefs(statement: Statement): Statement = statement match {
+    case Single(singleStatement) =>
+      Single(replacePredefs(singleStatement))
+    case Sequence(first, second) =>
+      Sequence(replacePredefs(first), replacePredefs(second))
+    case NoOp =>
+      NoOp
+  }
+
+  def replacePredefs(expression: Expression): Expression = {
+    expression match {
+      case Variable(name) if predefined.contains(name) => Predefined(name)
+      case ArrayAccess(name, index) => ArrayAccess(name, replacePredefs(index))
+      case Apply(function, parameters) => Apply(replacePredefs(function), parameters.map(replacePredefs))
+      case UnaryOp(operator, x) => UnaryOp(operator, replacePredefs(x))
+      case BinaryOp(operator, x, y) => BinaryOp(operator, replacePredefs(x), replacePredefs(y))
+      case Lambda(typeParams, paramDefs, returnType, body) => Lambda(typeParams, paramDefs, returnType, replacePredefs(body))
+      case _ => expression
+    }
+  }
 }

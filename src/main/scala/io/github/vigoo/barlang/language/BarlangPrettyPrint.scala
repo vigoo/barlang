@@ -119,9 +119,11 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
         code("end")
   }
 
-  implicit val singleStatementPrettyPrinter: PPrinter[SingleStatement] = (statement: SingleStatement) => statement match {
-    case VariableDeclaration(name, value) =>
+  implicit val singleStatementPrettyPrinter: PPrinter[SingleStatement] = {
+    case VariableDeclaration(name, VariableProperties(false), value) =>
       code("val ") >> pretty(name) >> code(" = ") >> pretty(value)
+    case VariableDeclaration(name, VariableProperties(true), value) =>
+      code("var ") >> pretty(name) >> code(" = ") >> pretty(value)
 
     case ArrayDeclaration(name, elementType) =>
       code("array") >> squareBracketed(elementType) >> space >> pretty(name)
@@ -172,8 +174,8 @@ object BarlangPrettyPrint extends PrettyPrint[NoFx] {
 
     case While(condition, body) =>
       code("while") >> space >> pretty(condition) >> newline >>
-      indented(pretty(body)) >> newline >>
-      code("end")
+        indented(pretty(body)) >> newline >>
+        code("end")
 
     case UpdateVariable(name, value) =>
       pretty(name) >> space >> code("<-") >> space >> pretty(value)

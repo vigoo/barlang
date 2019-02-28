@@ -86,6 +86,8 @@ trait CompilerTypes {
 
   case class IllegalState(reason: String) extends CompilerError
 
+  case class UpdatingImmutableVariable(name: SymbolName) extends CompilerError
+
 
   trait TypeEq[T] {
     def typeEq(a: T, b: T): Boolean
@@ -103,7 +105,7 @@ trait CompilerTypes {
   }
   implicit val typeTypeEq: TypeEq[Type] = (a: Type, b: Type) => a == b
   implicit val typeParamTypeEq: TypeEq[TypeParam] = (a: TypeParam, b: TypeParam) => a == b
-  implicit val exendedTypeTypeEq: TypeEq[ExtendedType] = (a: ExtendedType, b: ExtendedType) => {
+  implicit val extendedTypeTypeEq: TypeEq[ExtendedType] = (a: ExtendedType, b: ExtendedType) => {
     (a, b) match {
       case (SimpleType(t1), SimpleType(t2)) =>
         typeEq(t1, t2)
@@ -123,7 +125,11 @@ trait CompilerTypes {
       typeEq(value, other)
   }
 
-  case class Context(scope: Scope, symbols: Map[SymbolName, AssignedSymbol], symbolTypes: Map[SymbolName, ExtendedType], lastTmp: Int)
+  case class Context(scope: Scope,
+                     symbols: Map[SymbolName, AssignedSymbol],
+                     symbolTypes: Map[SymbolName, ExtendedType],
+                     mutability: Map[SymbolName, Boolean],
+                     lastTmp: Int)
 
 
   type CompilerResult[A] = Either[CompilerError, A]
@@ -162,6 +168,11 @@ trait CompilerTypes {
       context <- get[R, Context]
     } yield context.symbols.get(name)
 
+  def findMutability[R : _compilerState](name: SymbolName): Eff[R, Option[Boolean]] =
+    for {
+      context <- get[R, Context]
+    } yield context.mutability.get(name)
+
   def findType[R : _compilerState](name: SymbolName): Eff[R, Option[ExtendedType]] =
     for {
       context <- get[R, Context]
@@ -180,10 +191,29 @@ trait CompilerTypes {
   def prerequisite(statement: Eff[StatementCompiler, BashStatement]): Eff[ExpressionCompiler, Unit] =
     tell[ExpressionCompiler, Eff[StatementCompiler, BashStatement]](statement)
 
-  def createIdentifier[R : _compilerState](name: SymbolName): Eff[R, AssignedSymbol] =
+  def createIdentifier[R : _compilerState](name: SymbolName, isMutable: Boolean): Eff[R, AssignedSymbol] =
     for {
       context <- get[R, Context]
       assignedSymbol = AssignedSymbol(name, s"${context.scope.identifierPrefix}${name.name}")
-      _ <- put[R, Context](context.copy(symbols = context.symbols + (name -> assignedSymbol)))
+      _ <- put[R, Context](context.copy(
+        symbols = context.symbols + (name -> assignedSymbol),
+        mutability = context.mutability + (name -> isMutable)))
     } yield assignedSymbol
+
+  def createFunctionContext[R : _compilerState](name: SymbolName, paramDefs: List[ParamDef]): Eff[R, Context] = {
+    for {
+      context <- get[R, Context]
+      newScope = context.scope.functionScope(name)
+      extendedSymbolTypes = paramDefs.foldLeft(context.symbolTypes) { (types, paramDef) =>
+        types + (paramDef.name -> SimpleType(paramDef.typ))
+      }
+      extendedSymbols = paramDefs.foldLeft(context.symbols) { (symbols, paramDef) =>
+        symbols + (paramDef.name -> AssignedSymbol.inScope(newScope, paramDef.name))
+      }
+    } yield context.copy(
+      scope = newScope,
+      symbols = extendedSymbols,
+      symbolTypes = extendedSymbolTypes
+    )
+  }
 }

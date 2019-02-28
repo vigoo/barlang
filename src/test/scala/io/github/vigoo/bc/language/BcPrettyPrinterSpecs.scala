@@ -16,6 +16,7 @@ class BcPrettyPrinterSpecs extends Specification with PrettyPrinterTests[NoFx, B
     multiplication     ${Mul(Number(1), Number(1)) should bePrintedAs("(1.0) * (1.0)")}
     division           ${Div(Number(10), Number(2)) should bePrintedAs("(10.0) / (2.0)")}
     nested expressions ${Add(Number(1), Div(BashVariable(BashIdentifier("X")), Number(2))) should bePrintedAs("(1.0) + (($X) / (2.0))")}
+    function calls     ${FunctionCall("sin", Number(1.0)) should bePrintedAs("sin(1.0)")}
   """
 
   override val pp = BcPrettyPrint

@@ -19,6 +19,7 @@ object BashStatements {
   case class Function(name: BashIdentifier, body: BashStatement) extends BashStatement
   case class Eval(statement: BashStatement) extends BashStatement
   case class ArrayUpdate(target: BashIdentifier, index: BashExpression, value: BashExpression) extends BashStatement
+  case class While(conditional: BashExpression, body: BashStatement) extends BashStatement
   case class Sequence(statements: List[BashStatement]) extends BashStatement {
     override def flatten: List[BashStatement] =
       statements.flatMap(_.flatten)

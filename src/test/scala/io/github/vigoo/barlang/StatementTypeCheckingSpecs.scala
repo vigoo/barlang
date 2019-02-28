@@ -10,7 +10,7 @@ import org.specs2.matcher.Matcher
 
 class StatementTypeCheckingSpecs extends Specification { def is = s2"""
   Statement type checking works on
-    variable declaration   ${VariableDeclaration(SymbolName("y"), StringLiteral("z")) should haveType(Types.Unit())}
+    variable declaration   ${VariableDeclaration(SymbolName("y"), VariableProperties(mutable = false), StringLiteral("z")) should haveType(Types.Unit())}
     function definition    ${emptyFunDef should haveType(Types.Unit())}
     function call          ${complexCall should haveTypeWith(exampleContext, Types.Unit())}
     run external command   ${Run(StringLiteral("echo"), List(StringLiteral("hello world"))) should haveType(Types.Unit())}
@@ -80,6 +80,7 @@ class StatementTypeCheckingSpecs extends Specification { def is = s2"""
       scope = GlobalScope,
       symbols = types.map { case (name, _) => name -> AssignedSymbol(name, name.name) },
       symbolTypes = types.mapValues(SimpleType.apply),
+      mutability = types.map { case (name, _) => name -> false },
       lastTmp = 0
     )
     customContext

@@ -117,6 +117,7 @@ class ExpressionTypeCheckingSpecs extends Specification { def is = s2"""
       scope = GlobalScope,
       symbols = types.map { case (name, _) => name -> AssignedSymbol(name, name.name) },
       symbolTypes = types.mapValues(SimpleType.apply),
+      mutability = types.map { case (name, _) => name -> false },
       lastTmp = 0
     )
     customContext

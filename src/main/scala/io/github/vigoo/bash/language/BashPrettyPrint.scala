@@ -89,10 +89,17 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
       code("let") >> space >> pretty(sequence(expressions.map(expr => doubleQuoted(expr)), separator = " "))
     case Function(name, body) =>
       code("function") >> space >> pretty(name) >> space >> code("{") >> newline >>
-        indented(pretty(body)) >> newline
+        indented(pretty(body)) >> newline >>
       code("}")
     case BashStatements.Eval(statement) =>
       code("eval") >> space >> pretty(statement)
+    case BashStatements.ArrayUpdate(target, index, value) =>
+      pretty(target) >> squareBracketed(index) >> code("=") >> pretty(value)
+    case BashStatements.While(conditional, body) =>
+      code("while") >> space >> pretty(conditional) >> newline >>
+      code("do") >> newline >>
+      indented(pretty(body)) >> newline >>
+      code("done")
 
     case Sequence(statements) =>
       pretty(sequence(statements, "\n"))
@@ -111,13 +118,63 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
     case BashArrayIndices.Index(index) => pretty(index)
   }
 
+  private val charsNeedsQuoting: Set[Char] =
+    Set('?', '+', '&', '[', ']', '~')
+
+  private val charsNeedsEscape: Set[Char] =
+    Set('\\', '"', '$', '`')
+
+  sealed trait BashStringRequirements {
+    def needsQuotes: BashStringRequirements
+    def needsDollarQuotes: BashStringRequirements
+  }
+
+  object BashStringRequirements {
+
+    final case object NoRequirements extends BashStringRequirements {
+      override val needsQuotes: BashStringRequirements = NeedQuotes
+      override val needsDollarQuotes: BashStringRequirements = NeedDollarQuotes
+    }
+
+    final case object NeedQuotes extends BashStringRequirements {
+      override val needsQuotes: BashStringRequirements = NeedQuotes
+      override val needsDollarQuotes: BashStringRequirements = NeedDollarQuotes
+    }
+
+    final case object NeedDollarQuotes extends BashStringRequirements {
+      override val needsQuotes: BashStringRequirements = NeedDollarQuotes
+      override val needsDollarQuotes: BashStringRequirements = NeedDollarQuotes
+    }
+
+  }
+
+  private def prettyPrintBashString(string: String): (BashStringRequirements, PP[Unit]) = {
+    if (string.isEmpty) {
+      (BashStringRequirements.NeedQuotes, empty)
+    } else {
+      string.foldLeft[(BashStringRequirements, PP[Unit])]((BashStringRequirements.NoRequirements, empty)) {
+        case ((reqs, p), ch) if ch.isWhitespace => (reqs.needsQuotes, p >> append(ch))
+        case ((reqs, p), ch) if charsNeedsQuoting.contains(ch) => (reqs.needsQuotes, p >> append(ch))
+        case ((reqs, p), ch) if charsNeedsEscape.contains(ch) => (reqs.needsQuotes, p >> append('\\') >> append(ch))
+        case ((reqs, p), ch) if ch.isControl => (reqs.needsDollarQuotes, p >> append("\\0") >> append(ch.toOctalString))
+        case ((reqs, p), ch) => (reqs, p >> append(ch))
+      }
+    }
+  }
+
+  private def dollarQuoted[I](inner: I)(implicit innerPrettyPrinter: PrettyPrinter[I, BashFx]) =
+    between("$'", "'", inner)
+
   implicit val bashExpressionPrettyPrinter: PPrinter[BashExpression] = {
     case Literal(lit) =>
       getBashState.flatMap { state =>
-        if ((lit.exists(_.isWhitespace) || lit.isEmpty) && !state.inString) {
-          doubleQuoted(lit)
-        } else {
-          code(lit)
+        val (requirements, litPrinter) = prettyPrintBashString(lit)
+
+        (requirements, state.inString) match {
+          case (BashStringRequirements.NoRequirements, false) => litPrinter
+          case (BashStringRequirements.NoRequirements, true) => doubleQuoted(litPrinter)
+          case (BashStringRequirements.NeedQuotes, _) => doubleQuoted(litPrinter)
+          case (BashStringRequirements.NeedDollarQuotes, _) => dollarQuoted(litPrinter)
         }
       }
 
@@ -133,7 +190,7 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
 
     case BashExpressions.Eval(statement) => between("$(", ")", statement)
     case Conditional(condition) => between("[[ ", " ]]", condition)
-    case Interpolated(parts) => doubleQuoted(inString(pretty(sequence(parts))))
+    case Interpolated(parts) => inString(pretty(sequence(parts)))
     case EvalArithmetic(expression) => between("$(( ", " ))", expression)
     case True => code("true")
     case False => code("false")
