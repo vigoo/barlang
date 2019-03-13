@@ -6,6 +6,7 @@ import io.github.vigoo.simpp.{PrettyPrint, PrettyPrinter}
 import io.github.vigoo.simpp.PrettyPrint.PrettyPrinterContext
 import org.atnos.eff.{Eff, NoFx}
 
+// TODO: this has to output a BashExpression (interpolated string) not a string!
 object BcPrettyPrint extends PrettyPrint[NoFx] {
   override def runAdditionalFx(f: BcPrettyPrint.PP[Unit]): Eff[PrettyPrinterContext[NoFx], Unit] = f
 

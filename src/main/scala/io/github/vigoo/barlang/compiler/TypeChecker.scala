@@ -234,7 +234,7 @@ trait TypeChecker {
     import effectOps._
 
     statement match {
-      case VariableDeclaration(name, value) =>
+      case VariableDeclaration(name, properties, value) =>
         for {
           valueType <- typeCheckExpression[StatementCompiler](value)
           _ <- storeType[StatementCompiler](name, valueType)

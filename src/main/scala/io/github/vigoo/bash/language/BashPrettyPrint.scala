@@ -165,6 +165,26 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
   private def dollarQuoted[I](inner: I)(implicit innerPrettyPrinter: PrettyPrinter[I, BashFx]) =
     between("$'", "'", inner)
 
+  private def normalizePartsWithQuoteRequirements(parts: List[(BashStringRequirements, PP[Unit])]): List[(BashStringRequirements, PP[Unit])] = {
+    // TODO: tailrec
+    parts match {
+      case Nil => Nil
+      case (req, printer) :: rest =>
+        val (sameReq, tail) = rest.span { case (r, _) => r == req }
+        val partsToMerge: List[BashPrettyPrint.PP[Unit]] = printer :: sameReq.map { case (_, p) => p }
+        val mergedParts = partsToMerge.foldLeft[PP[Unit]](empty)(_ >> _)
+        (req, mergedParts) :: normalizePartsWithQuoteRequirements(tail)
+    }
+  }
+
+  private def renderStringPart(requirements: BashStringRequirements, printer: PP[Unit]): PP[Unit] = {
+    requirements match {
+      case BashStringRequirements.NoRequirements => printer
+      case BashStringRequirements.NeedQuotes => doubleQuoted(printer)
+      case BashStringRequirements.NeedDollarQuotes => dollarQuoted(printer)
+    }
+  }
+
   implicit val bashExpressionPrettyPrinter: PPrinter[BashExpression] = {
     case Literal(lit) =>
       getBashState.flatMap { state =>
@@ -190,12 +210,32 @@ object BashPrettyPrint extends PrettyPrint[Fx.fx1[State[BashPrettyPrinterState, 
 
     case BashExpressions.Eval(statement) => between("$(", ")", statement)
     case Conditional(condition) => between("[[ ", " ]]", condition)
-    case Interpolated(parts) => inString(pretty(sequence(parts)))
+    case Interpolated(parts) =>
+      val renderedParts = renderInterpolatedParts(parts)
+      val normalizedParts = normalizePartsWithQuoteRequirements(renderedParts)
+      normalizedParts.traverse_((renderStringPart _).tupled)
+
     case EvalArithmetic(expression) => between("$(( ", " ))", expression)
     case True => code("true")
     case False => code("false")
     case And(a, b) => pretty(a) >> space >> code("&&") >> space >> pretty(b)
     case Or(a, b) => pretty(a) >> space >> code("||") >> space >> pretty(b)
+  }
+
+  private def renderInterpolatedParts(parts: List[BashExpression]): List[(BashStringRequirements, PP[Result])] = {
+    parts.flatMap {
+      case Literal(lit) =>
+        prettyPrintBashString(lit) match {
+          case (req, p) => List((req.needsQuotes, p)) // Require at least simple quotes in interpolated strings
+        }
+      case ReadVariable(variable) =>
+        List((BashStringRequirements.NeedQuotes, dollar >> curlyBracketed(print(variable))))
+      case Interpolated(subParts) =>
+        renderInterpolatedParts(subParts)
+      case other: BashExpression =>
+        // TODO
+        List((BashStringRequirements.NeedQuotes, code(other.toString)))
+    }
   }
 
   implicit val bashOptionPrettyPrinter: PPrinter[BashOption] = {

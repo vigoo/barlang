@@ -16,7 +16,7 @@ libraryDependencies ++= Seq(
   "io.github.vigoo" %% "simpp" % "0.2-SNAPSHOT",
   "io.github.vigoo" %% "clipp" % "0.1-SNAPSHOT",
 
-  "org.specs2" %% "specs2-core" % "4.4.1" % "test"
+  "org.specs2" %% "specs2-core" % "4.5.1" % "test"
 )
 
 scalacOptions += "-Ypartial-unification"
